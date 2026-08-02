@@ -11,5 +11,28 @@ export interface NavLink {
   readonly href: string;
 }
 
-/** Geographic point, matching the [longitude, latitude] order Mapbox expects. */
-export type LngLat = readonly [longitude: number, latitude: number];
+/** Line-art variant used while a property has no photography. */
+export type ArchitecturalVariant = "single-storey" | "double-storey" | "townhouse";
+
+/**
+ * The shape the homepage needs to render a property card. The full property
+ * record arrives with the Supabase schema in a later phase.
+ */
+export interface PropertyPreview {
+  readonly id: string;
+  readonly name: string;
+  readonly suburb: string;
+  readonly status: PropertyStatus;
+  readonly summary: string;
+  readonly bedrooms: number;
+  readonly bathrooms: number;
+  readonly carSpaces: number;
+  /** Land size in square metres. */
+  readonly landSize: number;
+  /**
+   * Path inside the Supabase Storage bucket, once photography exists. While it
+   * is undefined the card renders the architectural placeholder.
+   */
+  readonly imagePath?: string;
+  readonly placeholderVariant: ArchitecturalVariant;
+}

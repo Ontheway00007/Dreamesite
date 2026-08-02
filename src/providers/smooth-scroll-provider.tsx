@@ -21,13 +21,13 @@ import {
 export type ScrollTarget = string | number | HTMLElement;
 
 export interface SmoothScrollApi {
-  /** The live Lenis instance, or null under reduced motion or before mount. */
-  getLenis: () => Lenis | null;
   /** Scrolls to an element, selector or offset, falling back to native scroll. */
   scrollTo: (target: ScrollTarget, offset?: number) => void;
+  /** Freezes the page, used by overlays such as the mobile menu. */
+  setPaused: (paused: boolean) => void;
 }
 
-/** Native scrolling, used when Lenis is unavailable. */
+/** Native scrolling, used when Lenis is not running. */
 function nativeScrollTo(target: ScrollTarget, offset = 0): void {
   if (typeof target === "number") {
     window.scrollTo({ top: target + offset });
@@ -48,9 +48,14 @@ function nativeScrollTo(target: ScrollTarget, offset = 0): void {
   });
 }
 
+/** Lenis locks scrolling itself via `.lenis-stopped`; this covers the rest. */
+function setNativeScrollLock(paused: boolean): void {
+  document.documentElement.toggleAttribute("data-scroll-locked", paused);
+}
+
 const nativeScrollApi: SmoothScrollApi = {
-  getLenis: () => null,
   scrollTo: nativeScrollTo,
+  setPaused: setNativeScrollLock,
 };
 
 const SmoothScrollContext = createContext<SmoothScrollApi | null>(null);
@@ -60,9 +65,15 @@ export interface SmoothScrollProviderProps {
 }
 
 /**
- * Drives page scrolling with Lenis and keeps ScrollTrigger in sync by running
- * both from the single GSAP ticker. Visitors who prefer reduced motion keep
- * native scrolling.
+ * Owns the single Lenis instance and keeps ScrollTrigger reading the same
+ * scroll position.
+ *
+ * Lenis is advanced from the GSAP ticker rather than its own requestAnimationFrame
+ * loop so the page runs one frame loop instead of two. That integration requires
+ * GSAP's lag smoothing to be off, otherwise recovered frames make Lenis jump;
+ * the default is restored on cleanup so nothing leaks.
+ *
+ * Visitors who prefer reduced motion keep native scrolling.
  */
 export function SmoothScrollProvider({ children }: SmoothScrollProviderProps) {
   const lenisRef = useRef<Lenis | null>(null);
@@ -72,33 +83,24 @@ export function SmoothScrollProvider({ children }: SmoothScrollProviderProps) {
       return;
     }
 
-    const instance = new Lenis({
-      duration: 1.1,
-      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-      smoothWheel: true,
-      touchMultiplier: 1.6,
-    });
+    const lenis = new Lenis({ autoRaf: false });
+    const advance = (time: number) => lenis.raf(time * 1000);
 
-    const update = (time: number) => {
-      instance.raf(time * 1000);
-    };
-
-    instance.on("scroll", ScrollTrigger.update);
-    gsap.ticker.add(update);
+    lenis.on("scroll", ScrollTrigger.update);
+    gsap.ticker.add(advance);
     gsap.ticker.lagSmoothing(0);
-    lenisRef.current = instance;
+    lenisRef.current = lenis;
 
     return () => {
       lenisRef.current = null;
-      gsap.ticker.remove(update);
+      gsap.ticker.remove(advance);
       gsap.ticker.lagSmoothing(500, 33);
-      instance.destroy();
+      lenis.destroy();
     };
   }, []);
 
   const api = useMemo<SmoothScrollApi>(
     () => ({
-      getLenis: () => lenisRef.current,
       scrollTo: (target, offset = 0) => {
         const lenis = lenisRef.current;
 
@@ -108,6 +110,21 @@ export function SmoothScrollProvider({ children }: SmoothScrollProviderProps) {
         }
 
         nativeScrollTo(target, offset);
+      },
+      setPaused: (paused) => {
+        const lenis = lenisRef.current;
+
+        if (lenis) {
+          if (paused) {
+            lenis.stop();
+          } else {
+            lenis.start();
+          }
+
+          return;
+        }
+
+        setNativeScrollLock(paused);
       },
     }),
     [],

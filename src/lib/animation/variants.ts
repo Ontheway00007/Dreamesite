@@ -18,16 +18,6 @@ export const fadeIn: Variants = {
   visible: { opacity: 1, transition: baseTransition },
 };
 
-/** Subtle scale for imagery and media frames. */
-export const revealScale: Variants = {
-  hidden: { opacity: 0, scale: 1.04 },
-  visible: {
-    opacity: 1,
-    scale: 1,
-    transition: { duration: duration.cinematic, ease: easing.luxe },
-  },
-};
-
 /**
  * Parent wrapper that releases its children in sequence.
  * Children should use one of the variants above.

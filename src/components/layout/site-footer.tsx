@@ -70,7 +70,7 @@ export function SiteFooter() {
 
       <Container className="mt-14">
         <Text size="small" tone="subtle">
-          &copy; {year} {siteConfig.legalName}. Registered builder, Victoria.
+          &copy; {year} {siteConfig.legalName}. {siteConfig.region}.
         </Text>
       </Container>
     </footer>

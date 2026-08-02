@@ -16,9 +16,9 @@ export const siteConfig = {
 
 export const primaryNav: readonly NavLink[] = [
   { label: "Homes", href: "/#homes" },
+  { label: "Process", href: "/#process" },
   { label: "Locations", href: "/#locations" },
-  { label: "Approach", href: "/#approach" },
-  { label: "Enquire", href: "/#enquire" },
+  { label: "Contact", href: "/#contact" },
 ] as const;
 
 /**

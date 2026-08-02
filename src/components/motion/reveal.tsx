@@ -8,7 +8,6 @@ import {
   fadeIn,
   fadeUp,
   inViewOptions,
-  revealScale,
   staggerContainer,
 } from "@/lib/animation/variants";
 import { cn } from "@/lib/utils/cn";
@@ -16,7 +15,6 @@ import { cn } from "@/lib/utils/cn";
 const revealVariants = {
   up: fadeUp,
   in: fadeIn,
-  scale: revealScale,
 } as const;
 
 export type RevealVariant = keyof typeof revealVariants;

@@ -55,9 +55,3 @@ export const propertyStatusOrder: readonly PropertyStatus[] = [
   "completed",
   "sold",
 ] as const;
-
-export function getPropertyStatusToken(
-  status: PropertyStatus,
-): PropertyStatusToken {
-  return propertyStatusTokens[status];
-}

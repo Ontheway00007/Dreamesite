@@ -16,6 +16,44 @@ function required(name: string, value: string | undefined): string {
   return value;
 }
 
+function stripTrailingSlash(value: string): string {
+  return value.endsWith("/") ? value.slice(0, -1) : value;
+}
+
+/**
+ * Resolves the canonical origin without ever falling back to localhost in a
+ * deployed environment:
+ *
+ * 1. `NEXT_PUBLIC_SITE_URL` when set — the only value used in production.
+ * 2. The Vercel production domain, so a deploy without step 1 still emits
+ *    absolute URLs that resolve.
+ * 3. The per-deployment Vercel URL for preview builds.
+ * 4. localhost, which is only ever reached during local development.
+ */
+function resolveSiteUrl(): string {
+  const explicit = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+
+  if (explicit) {
+    return stripTrailingSlash(
+      explicit.startsWith("http") ? explicit : `https://${explicit}`,
+    );
+  }
+
+  const productionDomain = process.env.VERCEL_PROJECT_PRODUCTION_URL;
+
+  if (process.env.VERCEL_ENV === "production" && productionDomain) {
+    return `https://${productionDomain}`;
+  }
+
+  const deploymentDomain = process.env.VERCEL_URL;
+
+  if (deploymentDomain) {
+    return `https://${deploymentDomain}`;
+  }
+
+  return "http://localhost:3000";
+}
+
 export const env = {
   /** Supabase project URL, e.g. https://xxxxxxxx.supabase.co */
   get supabaseUrl(): string {
@@ -43,6 +81,18 @@ export const env = {
 
   /** Canonical origin used for metadata and absolute URLs. */
   get siteUrl(): string {
-    return process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+    return resolveSiteUrl();
+  },
+
+  /**
+   * True only for the production deployment. Preview and local builds ask
+   * search engines not to index them.
+   */
+  get isIndexable(): boolean {
+    if (process.env.VERCEL_ENV) {
+      return process.env.VERCEL_ENV === "production";
+    }
+
+    return process.env.NODE_ENV === "production";
   },
 } as const;
