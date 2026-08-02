@@ -12,11 +12,7 @@ import {
 import Lenis from "lenis";
 import "lenis/dist/lenis.css";
 
-import {
-  gsap,
-  prefersReducedMotion,
-  ScrollTrigger,
-} from "@/lib/animation/gsap";
+import { prefersReducedMotion, ScrollTrigger } from "@/lib/animation/gsap";
 
 export type ScrollTarget = string | number | HTMLElement;
 
@@ -30,7 +26,7 @@ export interface SmoothScrollApi {
 /** Native scrolling, used when Lenis is not running. */
 function nativeScrollTo(target: ScrollTarget, offset = 0): void {
   if (typeof target === "number") {
-    window.scrollTo({ top: target + offset });
+    window.scrollTo({ top: target + offset, behavior: "auto" });
     return;
   }
 
@@ -45,6 +41,7 @@ function nativeScrollTo(target: ScrollTarget, offset = 0): void {
 
   window.scrollTo({
     top: element.getBoundingClientRect().top + window.scrollY + offset,
+    behavior: "auto",
   });
 }
 
@@ -68,10 +65,9 @@ export interface SmoothScrollProviderProps {
  * Owns the single Lenis instance and keeps ScrollTrigger reading the same
  * scroll position.
  *
- * Lenis is advanced from the GSAP ticker rather than its own requestAnimationFrame
- * loop so the page runs one frame loop instead of two. That integration requires
- * GSAP's lag smoothing to be off, otherwise recovered frames make Lenis jump;
- * the default is restored on cleanup so nothing leaks.
+ * Lenis drives its own requestAnimationFrame loop and reports every scroll to
+ * ScrollTrigger. Nothing about GSAP's global configuration is changed here: the
+ * provider only creates, wires and destroys its own instance.
  *
  * Visitors who prefer reduced motion keep native scrolling.
  */
@@ -83,18 +79,13 @@ export function SmoothScrollProvider({ children }: SmoothScrollProviderProps) {
       return;
     }
 
-    const lenis = new Lenis({ autoRaf: false });
-    const advance = (time: number) => lenis.raf(time * 1000);
+    const lenis = new Lenis();
 
     lenis.on("scroll", ScrollTrigger.update);
-    gsap.ticker.add(advance);
-    gsap.ticker.lagSmoothing(0);
     lenisRef.current = lenis;
 
     return () => {
       lenisRef.current = null;
-      gsap.ticker.remove(advance);
-      gsap.ticker.lagSmoothing(500, 33);
       lenis.destroy();
     };
   }, []);

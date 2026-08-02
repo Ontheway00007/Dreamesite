@@ -11,12 +11,10 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { AnimatePresence, motion } from "framer-motion";
 import { Menu, X } from "lucide-react";
 
 import { Container } from "@/components/layout/container";
 import { Button } from "@/components/ui/button";
-import { duration, easing } from "@/lib/animation/easing";
 import { primaryNav, siteConfig } from "@/lib/site-config";
 import { cn } from "@/lib/utils/cn";
 import { useSmoothScroll } from "@/providers/smooth-scroll-provider";
@@ -28,6 +26,15 @@ function focusableWithin(container: HTMLElement): HTMLElement[] {
   ).filter((element) => element.offsetParent !== null);
 }
 
+/**
+ * Site navigation.
+ *
+ * The mobile panel stays mounted and is switched with `inert` plus a CSS
+ * transition, rather than being added and removed from the tree. That keeps two
+ * things simple: focus can move into the panel the moment it opens, because the
+ * element always exists, and `inert` guarantees nothing inside it is focusable
+ * or announced while it is closed.
+ */
 export function SiteHeader() {
   const [isOpen, setIsOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
@@ -54,14 +61,14 @@ export function SiteHeader() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Freeze the page behind the full-screen menu.
+  // Freeze the page behind the menu, and always release it on unmount.
   useEffect(() => {
     setPaused(isOpen);
 
     return () => setPaused(false);
   }, [isOpen, setPaused]);
 
-  // Move focus into the menu when it opens.
+  // Move focus into the panel when it opens.
   useEffect(() => {
     if (!isOpen) {
       return;
@@ -74,7 +81,7 @@ export function SiteHeader() {
     }
   }, [isOpen]);
 
-  // Escape closes the menu; Tab cycles within the header while it is open.
+  // Escape closes the menu; Tab stays inside the header while it is open.
   useEffect(() => {
     if (!isOpen) {
       return;
@@ -122,8 +129,10 @@ export function SiteHeader() {
   ) => {
     const hashIndex = href.indexOf("#");
     const [path] = href.split("#");
-    const isSamePage = path === "" || path === "/" ? pathname === "/" : pathname === path;
+    const isSamePage =
+      path === "" || path === "/" ? pathname === "/" : pathname === path;
 
+    // Navigating away: let the router handle it, just close the menu.
     if (hashIndex === -1 || !isSamePage) {
       close(false);
       return;
@@ -142,7 +151,7 @@ export function SiteHeader() {
       className={cn(
         "fixed inset-x-0 top-0 z-50 transition-[background-color,border-color] duration-(--duration-base) ease-luxe",
         isScrolled || isOpen
-          ? "border-b border-border bg-surface-overlay backdrop-blur-xl"
+          ? "border-border bg-surface-overlay border-b backdrop-blur-xl"
           : "border-b border-transparent",
       )}
     >
@@ -191,46 +200,43 @@ export function SiteHeader() {
         </button>
       </Container>
 
-      <AnimatePresence>
-        {isOpen ? (
-          <motion.div
-            key="mobile-navigation"
-            id="mobile-navigation"
-            ref={panelRef}
-            data-lenis-prevent
-            initial={{ opacity: 0, y: -12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -12 }}
-            transition={{ duration: duration.base, ease: easing.entrance }}
-            className="border-t border-border bg-background/98 h-[calc(100dvh-var(--header-height))] overflow-y-auto backdrop-blur-xl md:hidden"
-          >
-            <Container className="flex flex-col gap-2 py-10">
-              <nav aria-label="Mobile" className="flex flex-col">
-                {primaryNav.map((link) => (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    onClick={(event) => handleNavClick(event, link.href)}
-                    className="font-display text-heading-2 text-foreground border-b border-border py-4 font-light"
-                  >
-                    {link.label}
-                  </Link>
-                ))}
-              </nav>
-              <Button
-                href={contactHref}
-                variant="accent"
-                size="md"
-                className="mt-8"
-                fullWidth
-                onClick={() => close(false)}
+      <div
+        id="mobile-navigation"
+        ref={panelRef}
+        inert={!isOpen}
+        data-lenis-prevent
+        className={cn(
+          "border-border bg-background/98 fixed inset-x-0 top-(--header-height) bottom-0 overflow-y-auto border-t backdrop-blur-xl transition-[opacity,transform] duration-(--duration-base) ease-luxe md:hidden",
+          isOpen
+            ? "translate-y-0 opacity-100"
+            : "pointer-events-none -translate-y-3 opacity-0",
+        )}
+      >
+        <Container className="flex flex-col py-10">
+          <nav aria-label="Mobile" className="flex flex-col">
+            {primaryNav.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                onClick={(event) => handleNavClick(event, link.href)}
+                className="font-display text-heading-2 text-foreground border-border border-b py-4 font-light"
               >
-                Contact us
-              </Button>
-            </Container>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
+                {link.label}
+              </Link>
+            ))}
+          </nav>
+          <Button
+            href={contactHref}
+            variant="accent"
+            size="md"
+            className="mt-8"
+            fullWidth
+            onClick={() => close(false)}
+          >
+            Contact us
+          </Button>
+        </Container>
+      </div>
     </header>
   );
 }

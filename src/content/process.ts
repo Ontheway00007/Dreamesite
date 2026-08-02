@@ -10,15 +10,16 @@ export interface ProcessStage {
 }
 
 /**
- * The four stages every build moves through. Descriptions are deliberately
- * factual: they explain what happens, not how well we do it.
+ * The four stages a build moves through. Each description states what happens
+ * at that stage — the standard sequence for a Victorian residential build — and
+ * makes no claim about how the company performs.
  */
 export const processStages: readonly ProcessStage[] = [
   {
     id: "design",
     step: "01",
     title: "Site and design",
-    body: "The plan is set out for the block, its orientation and the streetscape, then priced before anything is signed.",
+    body: "The plan is set out for the block, its orientation and the streetscape.",
     icon: PencilRuler,
   },
   {
@@ -32,14 +33,14 @@ export const processStages: readonly ProcessStage[] = [
     id: "construction",
     step: "03",
     title: "Construction",
-    body: "Slab, frame, lock-up and fixing stages progress in sequence, each one recorded and shared as it completes.",
+    body: "Slab, frame, lock-up and fixing stages progress in sequence on site.",
     icon: HardHat,
   },
   {
     id: "handover",
     step: "04",
     title: "Handover",
-    body: "A defects walk-through is documented and resolved before keys, certificates and warranty paperwork are handed over.",
+    body: "Final inspection and a defects walk-through, then keys, certificates and warranty documents.",
     icon: KeyRound,
   },
 ] as const;

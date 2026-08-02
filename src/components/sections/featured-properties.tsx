@@ -4,16 +4,17 @@ import { PropertyCard } from "@/components/property/property-card";
 import { Button } from "@/components/ui/button";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { featuredProperties } from "@/content/featured-properties";
+import { ENQUIRY_ANCHOR } from "@/lib/routes";
 
 export function FeaturedProperties() {
   return (
     <Section id="homes" tone="alt" spacing="lg" divided>
       <SectionHeading
-        eyebrow="Featured homes"
-        title="Three facades, three ways to live on a northern block."
-        description="A first look at how our floor plans meet the street. Each home carries its current status, updated the day it changes."
+        eyebrow="Concept façades"
+        title="Three façades, three ways to live on a northern block."
+        description="Concept façades from our plan types, shown while live listings are connected. Each card carries the status label it will show as a listing."
         action={
-          <Button href="/#contact" variant="outline" size="sm">
+          <Button href={ENQUIRY_ANCHOR} variant="outline" size="sm">
             Enquire about availability
           </Button>
         }

@@ -11,8 +11,9 @@ import {
 import { gsap, prefersReducedMotion } from "@/lib/animation/gsap";
 
 /**
- * Layout effects do not run on the server. Selecting the hook this way keeps
- * animations flicker-free in the browser without logging an SSR warning.
+ * Layout effects do not run on the server. Selecting the hook this way lets the
+ * browser apply GSAP's starting values in the same commit as the render, rather
+ * than a frame later, without logging an SSR warning.
  */
 const useIsomorphicLayoutEffect =
   typeof window === "undefined" ? useEffect : useLayoutEffect;
@@ -29,10 +30,14 @@ export interface GsapScope<T extends HTMLElement> {
  * ScrollTrigger it creates is reverted automatically on unmount or when
  * `dependencies` change.
  *
- * It runs before paint, which lets `from()` tweens hide their targets without a
- * flash of unstyled content. Animations are skipped entirely when the visitor
- * prefers reduced motion, leaving the markup in its natural, fully visible
- * state.
+ * Note on timing: server-rendered markup has already been painted by the time
+ * React hydrates, so this cannot hide content "before the first paint". Use it
+ * for scroll-linked work, where the starting state is the element's natural
+ * position. Load-time entrances belong in CSS — see the entrance choreography
+ * in globals.css.
+ *
+ * Animations are skipped entirely when the visitor prefers reduced motion,
+ * leaving the markup in its natural, fully visible state.
  */
 export function useGsap<T extends HTMLElement = HTMLDivElement>(
   setup: (scope: GsapScope<T>) => void,

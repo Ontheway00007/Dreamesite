@@ -20,6 +20,8 @@ export type ArchitecturalVariant = "single-storey" | "double-storey" | "townhous
  */
 export interface PropertyPreview {
   readonly id: string;
+  /** URL segment for the property detail route. */
+  readonly slug: string;
   readonly name: string;
   readonly suburb: string;
   readonly status: PropertyStatus;

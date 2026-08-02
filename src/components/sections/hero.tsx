@@ -1,76 +1,66 @@
-"use client";
+import type { CSSProperties } from "react";
 
-import { ArrowDown, ArrowRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
 import { Container } from "@/components/layout/container";
 import { ArchitecturalFrame } from "@/components/media/architectural-frame";
 import { AnimatedText } from "@/components/motion/animated-text";
 import { Parallax } from "@/components/motion/parallax";
+import { ScrollCue } from "@/components/sections/scroll-cue";
 import { Button } from "@/components/ui/button";
-import { useGsap } from "@/hooks/use-gsap";
 import { siteConfig } from "@/lib/site-config";
-import { useSmoothScroll } from "@/providers/smooth-scroll-provider";
+
+/** Stage timings for the opening sequence, in seconds. */
+const enter = {
+  backdrop: 0,
+  elevation: 0.1,
+  eyebrow: 0.1,
+  headline: 0.25,
+  rule: 0.75,
+  body: 0.9,
+  actions: 1.05,
+  cue: 1.25,
+} as const;
+
+function delay(seconds: number): CSSProperties {
+  return { "--enter-delay": `${seconds}s` } as CSSProperties;
+}
 
 export interface HeroProps {
   eyebrow: string;
   headline: string;
   body: string;
-  /** Anchor the scroll indicator jumps to. */
+  /** Anchor the primary action and the scroll cue jump to. */
   scrollTarget: string;
+  /** Name of that destination, for the scroll cue's accessible label. */
+  scrollDestination: string;
 }
 
 /**
  * Opening sequence for the site.
  *
- * A single GSAP timeline runs once on mount and stages the composition: the
- * drawing settles, the headline rises word by word, the accent rule draws, then
- * the actions and the scroll cue arrive. It runs before first paint, so nothing
- * flashes, and it is skipped entirely under reduced motion where every element
- * is simply already in place.
+ * A Server Component. The entrance is one CSS choreography — the layers settle,
+ * the headline rises word by word, the rule draws, then the actions and the
+ * scroll cue arrive — staged entirely through `--enter-delay`. Because CSS owns
+ * it, the sequence starts with the first paint, survives with JavaScript
+ * disabled, and is absent for reduced-motion visitors.
+ *
+ * The two client leaves are the parallax layer (GSAP, scroll-linked) and the
+ * scroll cue (needs a click handler).
  */
-export function Hero({ eyebrow, headline, body, scrollTarget }: HeroProps) {
-  const { scrollTo } = useSmoothScroll();
-
-  const ref = useGsap<HTMLElement>(({ gsap }) => {
-    const timeline = gsap.timeline({
-      defaults: { ease: "expo.out", duration: 1 },
-    });
-
-    timeline
-      .from("[data-hero-grid]", { opacity: 0, duration: 1.6 }, 0)
-      .from(
-        "[data-hero-elevation]",
-        { opacity: 0, xPercent: 8, duration: 1.8 },
-        0,
-      )
-      .from("[data-hero-eyebrow]", { opacity: 0, y: 14, duration: 0.8 }, 0.1)
-      .from("[data-hero-rule]", { scaleX: 0, duration: 1.1 }, 0.75)
-      .from("[data-hero-body]", { opacity: 0, y: 18, duration: 0.9 }, 0.9)
-      .from("[data-hero-actions]", { opacity: 0, y: 18, duration: 0.9 }, 1.05)
-      .from("[data-hero-cue]", { opacity: 0, duration: 0.8 }, 1.25);
-
-    gsap.fromTo(
-      "[data-hero-cue-line]",
-      { yPercent: -100 },
-      {
-        yPercent: 100,
-        duration: 1.9,
-        ease: "power2.inOut",
-        repeat: -1,
-        repeatDelay: 0.3,
-        delay: 2,
-      },
-    );
-  });
-
+export function Hero({
+  eyebrow,
+  headline,
+  body,
+  scrollTarget,
+  scrollDestination,
+}: HeroProps) {
   return (
-    <section
-      ref={ref}
-      className="relative flex min-h-dvh items-center overflow-hidden pt-(--header-height)"
-    >
+    <section className="relative flex min-h-dvh items-center overflow-hidden pt-(--header-height)">
       <div className="absolute inset-0 -z-10" aria-hidden>
         <div
-          data-hero-grid
+          data-enter="fade"
+          style={delay(enter.backdrop)}
           className="blueprint-grid absolute inset-0 [mask-image:radial-gradient(ellipse_at_30%_35%,black,transparent_75%)]"
         />
         <Parallax
@@ -80,7 +70,8 @@ export function Hero({ eyebrow, headline, body, scrollTarget }: HeroProps) {
           <div className="size-[52rem] rounded-full bg-[radial-gradient(circle,var(--accent-soft),transparent_70%)] blur-3xl" />
         </Parallax>
         <div
-          data-hero-elevation
+          data-enter="fade"
+          style={delay(enter.elevation)}
           className="text-foreground/8 absolute -right-[10%] bottom-[-6%] w-[64rem] max-w-[125%]"
         >
           <ArchitecturalFrame variant="double-storey" />
@@ -91,7 +82,8 @@ export function Hero({ eyebrow, headline, body, scrollTarget }: HeroProps) {
       <Container className="py-28">
         <div className="max-w-5xl">
           <p
-            data-hero-eyebrow
+            data-enter
+            style={delay(enter.eyebrow)}
             className="text-eyebrow text-foreground-subtle font-medium uppercase"
           >
             {eyebrow}
@@ -100,24 +92,27 @@ export function Hero({ eyebrow, headline, body, scrollTarget }: HeroProps) {
           <AnimatedText
             as="h1"
             text={headline}
-            delay={0.25}
+            delay={enter.headline}
             className="font-display text-display text-foreground mt-7 font-light"
           />
 
           <div
-            data-hero-rule
+            data-enter="draw"
+            style={delay(enter.rule)}
             className="bg-accent mt-10 h-px w-28 origin-left"
           />
 
           <p
-            data-hero-body
+            data-enter
+            style={delay(enter.body)}
             className="text-lead text-foreground-muted mt-9 max-w-xl"
           >
             {body}
           </p>
 
           <div
-            data-hero-actions
+            data-enter
+            style={delay(enter.actions)}
             className="mt-12 flex flex-wrap items-center gap-4"
           >
             <Button href={scrollTarget} variant="accent" size="lg">
@@ -135,23 +130,12 @@ export function Hero({ eyebrow, headline, body, scrollTarget }: HeroProps) {
         </div>
       </Container>
 
-      <button
-        data-hero-cue
-        type="button"
-        onClick={() => scrollTo(scrollTarget, -80)}
-        className="text-foreground-subtle hover:text-foreground absolute bottom-8 left-1/2 hidden -translate-x-1/2 flex-col items-center gap-3 transition-colors duration-(--duration-base) md:flex"
-      >
-        <span className="text-[0.625rem] font-medium tracking-[0.28em] uppercase">
-          Scroll
-        </span>
-        <span className="bg-border relative h-14 w-px overflow-hidden">
-          <span
-            data-hero-cue-line
-            className="bg-accent absolute inset-x-0 top-0 block h-full"
-          />
-        </span>
-        <ArrowDown size={14} aria-hidden />
-      </button>
+      <ScrollCue
+        target={scrollTarget}
+        destination={scrollDestination}
+        enterDelay={enter.cue}
+        className="absolute bottom-8 left-1/2 hidden -translate-x-1/2 md:flex"
+      />
     </section>
   );
 }

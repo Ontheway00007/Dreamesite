@@ -1,18 +1,14 @@
-"use client";
-
 import Image from "next/image";
+import Link from "next/link";
 
-import { motion } from "framer-motion";
 import { Bath, BedDouble, Car, Ruler } from "lucide-react";
 
 import { ArchitecturalFrame } from "@/components/media/architectural-frame";
 import { StatusBadge } from "@/components/property/status-badge";
-import { duration, easing } from "@/lib/animation/easing";
 import { propertyImageUrl } from "@/lib/images/property-image";
+import { propertyHref } from "@/lib/routes";
 import { cn } from "@/lib/utils/cn";
 import type { PropertyPreview } from "@/types";
-
-const hoverTransition = { duration: duration.slow, ease: easing.luxe };
 
 export interface PropertyCardProps {
   property: PropertyPreview;
@@ -22,9 +18,13 @@ export interface PropertyCardProps {
 }
 
 /**
- * Premium property card. Hover state is driven by Framer Motion variants on the
- * article, so the media, rule and label move as one composed gesture using
- * transforms only.
+ * Premium property card, as a Server Component.
+ *
+ * The title is the card's single link and it stretches over the whole card
+ * through a pseudo-element, so there is one interactive control, one tab stop
+ * and no nested links. Hover and keyboard focus share the same treatment:
+ * `group-hover` and `group-focus-within` drive identical CSS transitions, which
+ * removes the need for a JavaScript animation library here.
  */
 export function PropertyCard({
   property,
@@ -41,22 +41,14 @@ export function PropertyCard({
   ];
 
   return (
-    <motion.article
-      initial="rest"
-      animate="rest"
-      whileHover="hover"
-      whileFocus="hover"
+    <article
       className={cn(
-        "border-border bg-surface group relative overflow-hidden rounded-xl border",
+        "group border-border bg-surface focus-within:border-accent hover:border-border-strong relative overflow-hidden rounded-xl border transition-colors duration-(--duration-base)",
         className,
       )}
     >
       <div className="bg-background-alt relative aspect-4/3 overflow-hidden">
-        <motion.div
-          variants={{ rest: { scale: 1 }, hover: { scale: 1.05 } }}
-          transition={hoverTransition}
-          className="absolute inset-0"
-        >
+        <div className="absolute inset-0 transition-transform duration-(--duration-slow) ease-luxe group-hover:scale-105 group-focus-within:scale-105">
           {imageUrl ? (
             <Image
               src={imageUrl}
@@ -70,33 +62,33 @@ export function PropertyCard({
               <ArchitecturalFrame variant={property.placeholderVariant} />
             </div>
           )}
-        </motion.div>
-
-        <div className="absolute inset-x-5 top-5 flex items-center justify-between gap-3">
-          <StatusBadge status={property.status} />
-          {imageUrl ? null : (
-            <span className="text-foreground-subtle text-[0.625rem] font-medium tracking-[0.2em] uppercase">
-              Placeholder
-            </span>
-          )}
         </div>
+
+        <StatusBadge status={property.status} className="absolute top-5 left-5" />
+
+        {imageUrl ? null : (
+          <span className="text-foreground-subtle absolute right-5 bottom-4 text-[0.625rem] font-medium tracking-[0.2em] uppercase">
+            Architectural preview
+          </span>
+        )}
       </div>
 
       <div className="p-6 md:p-7">
         <div className="flex items-baseline justify-between gap-4">
           <h3 className="font-display text-heading-3 font-normal">
-            {property.name}
+            <Link
+              href={propertyHref(property.slug)}
+              className="group-hover:text-accent transition-colors duration-(--duration-base) after:absolute after:inset-0 after:content-['']"
+            >
+              {property.name}
+            </Link>
           </h3>
           <p className="text-foreground-subtle text-xs font-medium tracking-[0.2em] uppercase">
             {property.suburb}
           </p>
         </div>
 
-        <motion.div
-          variants={{ rest: { scaleX: 1 }, hover: { scaleX: 2.4 } }}
-          transition={hoverTransition}
-          className="bg-accent mt-5 h-px w-10 origin-left"
-        />
+        <div className="bg-accent mt-5 h-px w-10 origin-left transition-transform duration-(--duration-slow) ease-luxe group-hover:scale-x-[2.4] group-focus-within:scale-x-[2.4]" />
 
         <p className="text-foreground-muted mt-5 text-sm leading-relaxed">
           {property.summary}
@@ -112,6 +104,6 @@ export function PropertyCard({
           ))}
         </dl>
       </div>
-    </motion.article>
+    </article>
   );
 }

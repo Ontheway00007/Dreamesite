@@ -67,7 +67,7 @@ src/
   components/
     layout/                Container, Section, SiteHeader, SiteFooter
     media/                 ArchitecturalFrame line drawings (image placeholders)
-    motion/                Reveal / RevealGroup (Framer), AnimatedText, Parallax (GSAP)
+    motion/                Reveal / RevealGroup (Framer), AnimatedText (CSS), Parallax (GSAP)
     property/              PropertyCard, StatusBadge
     sections/              One file per homepage section
     ui/                    Button, SectionHeading, Statistic, Timeline, typography
@@ -80,6 +80,7 @@ src/
     images/                Supabase Storage URL resolution for property media
     supabase/              Browser and server Supabase clients
     env.ts                 Typed, validated environment access
+    routes.ts              Internal path construction
     site-config.ts         Brand details, navigation, service areas
     utils/cn.ts            Class merging aware of the custom type scale
   providers/
@@ -93,18 +94,26 @@ Sections compose primitives; primitives never know which section they are in.
 
 ## Content to confirm before launch
 
-Content lives in `src/content/` so it can be edited without touching
-components. Two files hold values that are **not** verified:
+Content lives in `src/content/` and `src/lib/site-config.ts` so copy can be
+edited without touching components. Nothing unverified is published: the site
+shows no figures for homes delivered, years operating, projects or satisfaction,
+and no claims about awards, ratings or registrations.
 
-| File                     | What needs to happen                                                                                                                     |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `statistics.ts`          | `Homes delivered`, `Years building in the north` and `Typical build duration` are placeholders for layout. Replace with confirmed figures. |
-| `featured-properties.ts` | Three invented "facade studies" so the cards can be designed. Replace with real property records once the Supabase schema exists.          |
+Two things still need the business to confirm them:
 
-Everything else — the status definitions, the build stages, the service areas —
-describes process or geography and stays accurate as listings change. No claim
-about awards, ratings, registrations or customer numbers appears anywhere in the
-UI.
+| Where                    | What needs to happen                                                                                                                                    |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `site-config.ts`         | The email address and phone number are placeholders, and they are the only contact points on the site. Confirm both before launch.                        |
+| `featured-properties.ts` | Three concept façades, presented as concepts in the section copy, so the card design could be reviewed. Replace with real records when the schema exists. |
+
+The statistics section only publishes figures derived from data in this
+repository — the number of core suburbs, statuses and build stages — so it cannot
+drift out of date. Once a real figure is confirmed, add it to
+`content/statistics.ts` and it appears automatically.
+
+Service areas are the confirmed core suburbs: **Mickleham, Craigieburn and
+Donnybrook**. Add another suburb only when the business supplies it; the list
+feeds both the locations section and the statistics count.
 
 ## Images
 
@@ -113,11 +122,19 @@ No stock photography is used. Property media resolves in one place,
 
 1. A property with an `imagePath` renders that file from the public
    `property-media` Supabase Storage bucket through `next/image`.
-2. A property without one renders an `ArchitecturalFrame` elevation drawing and
-   is labelled "Placeholder" in the card.
+2. A property without one renders an `ArchitecturalFrame` elevation drawing,
+   captioned "Architectural preview" so a visitor knows it is a drawing rather
+   than photography.
 
 Adding photography is therefore a per-property data change, not a code change.
 `next.config.ts` already allows the Supabase host once the URL is configured.
+
+## Routes
+
+`lib/routes.ts` builds every internal path. Property cards already link using
+their real `slug`; because `/properties/[slug]` arrives with the property system,
+`propertyHref()` currently resolves to the enquiry section instead of a dead URL.
+Flip `PROPERTY_DETAIL_ROUTES_LIVE` when that route ships — no component changes.
 
 ## Design system
 
@@ -151,36 +168,45 @@ later all read from one place.
 
 ## Animation
 
-Each library has one job:
+Each layer has exactly one job, and each effect has exactly one owner:
 
-| Library           | Used for                                                              |
-| ----------------- | --------------------------------------------------------------------- |
-| **Lenis**         | Page scrolling, nothing else                                          |
-| **GSAP + ScrollTrigger** | Scroll storytelling: the hero intro timeline, parallax, the process timeline, word reveals |
-| **Framer Motion** | Interaction and UI state: hover, tabs, the mobile menu, counters, section reveals |
+| Layer                    | Owns                                                                                        |
+| ------------------------ | ------------------------------------------------------------------------------------------- |
+| **CSS**                  | Load-time entrances (the hero sequence, word reveals, the scroll cue) and hover/focus states |
+| **GSAP + ScrollTrigger** | Scroll-linked work only: the hero parallax layer and the process timeline                    |
+| **Framer Motion**        | Stateful UI: status tabs, section reveals, the animated counters                             |
+| **Lenis**                | Page scrolling, nothing else                                                                 |
 
-- `SmoothScrollProvider` owns the single Lenis instance and advances it from the
-  GSAP ticker instead of its own `requestAnimationFrame`, so the page runs one
-  frame loop. That integration is the one place GSAP's global lag smoothing is
-  changed, because recovered frames otherwise make Lenis jump; the default is
-  restored on cleanup.
+- The hero entrance is one CSS choreography, staged with `--enter-delay` in
+  `globals.css`. CSS was chosen over a JavaScript timeline deliberately: it starts
+  with the first paint so nothing flashes, it survives with JavaScript disabled,
+  it costs no bundle, and it removes any question of two systems fighting over
+  the same sequence.
+- `SmoothScrollProvider` owns the single Lenis instance, lets Lenis run its own
+  frame loop, and forwards every scroll to `ScrollTrigger.update()`. It changes
+  nothing global. `lib/animation/gsap.ts` is the only module permitted to touch
+  GSAP's global configuration, and today it needs to touch none of it.
 - `useSmoothScroll()` exposes `scrollTo` and `setPaused` and falls back to native
-  scrolling when Lenis is not running.
-- `useGsap()` runs animations inside a scoped `gsap.context` before paint and
-  reverts them on unmount, which prevents leaked ScrollTriggers and flashes of
-  unanimated content.
+  scrolling — with an explicit `behavior: "auto"` — when Lenis is not running.
+- `useGsap()` runs animations inside a scoped `gsap.context` and reverts them on
+  unmount, which prevents leaked ScrollTriggers. It is for scroll-linked work
+  only: server-rendered markup is already painted before React hydrates, so a
+  JavaScript hook cannot hide content ahead of the first paint.
 - The process timeline uses two ScrollTriggers for the whole section regardless
   of how many stages it holds.
-- Animation is used to direct attention, not decorate: the hero sequence, one
-  scroll-linked line, and hover feedback on cards. Everything animated moves with
-  transforms and opacity only.
-- Reduced motion is respected three ways: GSAP and Lenis check the media query
-  and do nothing, and `MotionConfig reducedMotion="user"` covers Framer Motion.
-  Content is fully visible and interactive either way.
+- Animation directs attention rather than decorating: one entrance, one
+  scroll-linked line, one parallax layer, and hover/focus feedback. Everything
+  animated moves with transforms and opacity only.
+- Reduced motion is handled at every layer: the entire CSS entrance block sits
+  behind `prefers-reduced-motion: no-preference`, a reduce-motion rule collapses
+  any remaining animation or transition to a single frame and forces instant
+  anchor scrolling, GSAP and Lenis check the query and do nothing, and
+  `MotionConfig reducedMotion="user"` covers Framer Motion.
 
 Server Components are the default. `"use client"` appears only where a browser
-API or animation runtime requires it: the header, the hero, the status tabs, the
-timeline, the counters, the property card, and the providers.
+API or React state is genuinely needed: the header, the status tabs, the
+timeline, the counters, the parallax layer, the scroll cue, and the providers.
+The hero, the property cards and every section wrapper render on the server.
 
 ## Deployment
 

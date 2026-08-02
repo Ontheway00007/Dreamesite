@@ -1,13 +1,21 @@
 import type { NavLink } from "@/types";
 
+/**
+ * Single source of truth for business facts shown on the site. Nothing in a
+ * component should hard-code a suburb, an email address or a claim.
+ */
 export const siteConfig = {
   name: "Dreame",
   legalName: "Dreame Homes",
   tagline: "Considered homes across northern Melbourne",
   description:
-    "Dreame is a residential building company crafting move-in ready, under construction and completed homes across northern Melbourne.",
+    "Dreame is a residential building company building homes in Mickleham, Craigieburn and Donnybrook, in Melbourne's northern growth corridor.",
   locale: "en-AU",
-  region: "Northern Melbourne, Victoria, Australia",
+  region: "Northern Melbourne, Victoria",
+  /**
+   * PLACEHOLDER contact details — these are the only contact points shown to
+   * visitors, so both must be confirmed by the business before launch.
+   */
   contact: {
     email: "hello@dreamehomes.com.au",
     phone: "+61 3 9000 0000",
@@ -22,18 +30,12 @@ export const primaryNav: readonly NavLink[] = [
 ] as const;
 
 /**
- * Suburbs and growth corridors the company builds in. Used for content and,
- * later, for grouping properties on the map.
+ * Confirmed core build areas. Add a suburb only when the business supplies it —
+ * this list is published as fact and is also used to derive the service area
+ * count shown on the homepage.
  */
 export const serviceAreas: readonly string[] = [
-  "Craigieburn",
   "Mickleham",
-  "Kalkallo",
+  "Craigieburn",
   "Donnybrook",
-  "Wollert",
-  "Epping",
-  "Mernda",
-  "Greenvale",
-  "Roxburgh Park",
-  "Beveridge",
 ] as const;

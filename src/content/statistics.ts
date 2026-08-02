@@ -1,3 +1,5 @@
+import { processStages } from "@/content/process";
+import { propertyStatusOrder } from "@/lib/design/property-status";
 import { serviceAreas } from "@/lib/site-config";
 
 export interface CompanyStatistic {
@@ -8,15 +10,28 @@ export interface CompanyStatistic {
 }
 
 /**
- * UNCONFIRMED FIGURES.
+ * Only figures that are true by construction are published here: each one is
+ * derived from data in this repository, so it cannot drift out of date.
  *
- * Only `suburbs` is derived from data in this repository. The other three are
- * placeholders for layout purposes and must be confirmed by the business before
- * launch — see "Content to confirm" in the README. Do not publish them as-is.
+ * Business figures — homes delivered, years operating, satisfaction rates — are
+ * deliberately absent. Nothing goes on the page as a company achievement until
+ * the business confirms it in writing; at that point add the entry here and it
+ * appears in the section automatically.
  */
 export const companyStatistics: readonly CompanyStatistic[] = [
-  { id: "homes", value: 120, suffix: "+", label: "Homes delivered" },
-  { id: "suburbs", value: serviceAreas.length, label: "Suburbs we build in" },
-  { id: "years", value: 12, label: "Years building in the north" },
-  { id: "build-time", value: 9, suffix: " mo", label: "Typical build duration" },
-] as const;
+  {
+    id: "areas",
+    value: serviceAreas.length,
+    label: "Core suburbs we build in",
+  },
+  {
+    id: "statuses",
+    value: propertyStatusOrder.length,
+    label: "Statuses tracked per home",
+  },
+  {
+    id: "stages",
+    value: processStages.length,
+    label: "Documented build stages",
+  },
+];

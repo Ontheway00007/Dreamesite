@@ -13,8 +13,9 @@ export default function HomePage() {
       <Hero
         eyebrow="Residential builder · Northern Melbourne"
         headline="Homes built with intent, north of Melbourne."
-        body="We design and build across the northern growth corridor, from Craigieburn to Mernda. Every home we list carries an honest status, so you always know what is ready now and what is still on site."
+        body="We design and build in Mickleham, Craigieburn and Donnybrook, in Melbourne's northern growth corridor. Every home we show carries its current status, so you always know what is ready now and what is still on site."
         scrollTarget="#homes"
+        scrollDestination="our façades"
       />
 
       <FeaturedProperties />

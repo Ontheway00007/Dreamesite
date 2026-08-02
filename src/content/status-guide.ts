@@ -35,7 +35,7 @@ export const statusGuide: Readonly<Record<PropertyStatus, StatusGuideEntry>> = {
   sold: {
     headline: "No longer available.",
     detail:
-      "The home has found its owner. We keep it listed so the record of what we have delivered stays complete and honest.",
+      "The home has found its owner. It stays listed so the build record remains complete rather than disappearing.",
     nextStep: "Ask about similar homes",
   },
 };

@@ -1,20 +1,23 @@
 import type { PropertyPreview } from "@/types";
 
 /**
- * PLACEHOLDER SHOWCASE CONTENT.
+ * Concept façades, not listings.
  *
- * These three homes exist so the homepage can be designed and reviewed before
- * the Supabase property schema lands. Names, specifications and suburbs must be
- * replaced with real records; none of them describe an actual property.
+ * These three entries let the card design and the status system be reviewed
+ * before the Supabase property schema exists. They describe plan types rather
+ * than real homes, and the section copy tells visitors exactly that. Replace
+ * them with real records — the shape is already correct, including the slug used
+ * by the future /properties/[slug] route.
  *
  * Add `imagePath` (a path inside the Supabase Storage bucket) to swap the
- * architectural placeholder for photography, one property at a time.
+ * architectural drawing for photography, one property at a time.
  */
 export const featuredProperties: readonly PropertyPreview[] = [
   {
-    id: "placeholder-kalkallo",
-    name: "Facade study A",
-    suburb: "Kalkallo",
+    id: "concept-single-storey",
+    slug: "single-storey-concept",
+    name: "Single storey concept",
+    suburb: "Mickleham",
     status: "move-in-ready",
     summary:
       "Single level, north-facing living, courtyard to the rear boundary.",
@@ -25,11 +28,13 @@ export const featuredProperties: readonly PropertyPreview[] = [
     placeholderVariant: "single-storey",
   },
   {
-    id: "placeholder-wollert",
-    name: "Facade study B",
-    suburb: "Wollert",
+    id: "concept-double-storey",
+    slug: "two-storey-concept",
+    name: "Two storey concept",
+    suburb: "Craigieburn",
     status: "under-construction",
-    summary: "Two storey, upper level retreat, double garage under roofline.",
+    summary:
+      "Two storey, upper level retreat, double garage under the main roofline.",
     bedrooms: 4,
     bathrooms: 3,
     carSpaces: 2,
@@ -37,9 +42,10 @@ export const featuredProperties: readonly PropertyPreview[] = [
     placeholderVariant: "double-storey",
   },
   {
-    id: "placeholder-mernda",
-    name: "Facade study C",
-    suburb: "Mernda",
+    id: "concept-townhouse",
+    slug: "townhouse-concept",
+    name: "Townhouse concept",
+    suburb: "Donnybrook",
     status: "completed",
     summary: "Compact footprint, shared party wall, private upper terrace.",
     bedrooms: 3,

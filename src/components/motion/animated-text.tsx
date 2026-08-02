@@ -1,9 +1,5 @@
-"use client";
+import { Fragment, type CSSProperties, type ElementType } from "react";
 
-import type { ElementType } from "react";
-
-import { useGsap } from "@/hooks/use-gsap";
-import { gsapEase } from "@/lib/animation/easing";
 import { cn } from "@/lib/utils/cn";
 
 export interface AnimatedTextProps {
@@ -20,9 +16,11 @@ export interface AnimatedTextProps {
 /**
  * Rises each word of a headline out of its own mask.
  *
- * The text is server-rendered as normal words, so it is always readable, always
- * selectable and always available to search engines. GSAP only takes over the
- * transform, and does nothing at all under reduced motion.
+ * A Server Component: the words are plain server-rendered text, always
+ * readable, selectable and available to search engines. The movement is the
+ * shared `data-enter="word"` CSS animation, staged per word, so it begins with
+ * the first paint and disappears entirely under reduced motion. Nothing here
+ * depends on JavaScript, and no animation library is involved.
  */
 export function AnimatedText({
   text,
@@ -32,30 +30,29 @@ export function AnimatedText({
   className,
 }: AnimatedTextProps) {
   const Component = as as ElementType;
-  const ref = useGsap<HTMLElement>(
-    ({ gsap }) => {
-      gsap.from("[data-word]", {
-        yPercent: 115,
-        duration: 0.95,
-        ease: gsapEase.entrance,
-        stagger,
-        delay,
-      });
-    },
-    [delay, stagger, text],
-  );
 
   return (
-    <Component ref={ref} className={cn("text-balance", className)}>
+    <Component className={cn("text-balance", className)}>
       {text.split(" ").map((word, index) => (
-        <span
-          key={`${word}-${index}`}
-          className="mr-[0.22em] -mb-[0.18em] inline-flex overflow-hidden pb-[0.18em]"
-        >
-          <span data-word className="inline-block will-change-transform">
-            {word}
+        <Fragment key={`${word}-${index}`}>
+          {/* A real space between masks: it keeps the text content readable for
+              screen readers and search engines, and gives the line somewhere to
+              break. */}
+          {index > 0 ? " " : null}
+          <span className="-mb-[0.18em] inline-flex overflow-hidden pb-[0.18em]">
+            <span
+              data-enter="word"
+              style={
+                {
+                  "--enter-delay": `${delay + index * stagger}s`,
+                } as CSSProperties
+              }
+              className="inline-block"
+            >
+              {word}
+            </span>
           </span>
-        </span>
+        </Fragment>
       ))}
     </Component>
   );

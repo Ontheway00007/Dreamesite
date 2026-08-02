@@ -24,7 +24,7 @@ export function StatusBadge({
   return (
     <span
       className={cn(
-        "border-border-strong bg-surface-overlay text-foreground inline-flex items-center rounded-full border font-medium tracking-[0.16em] uppercase backdrop-blur-md",
+        "border-border-strong bg-surface-overlay text-foreground inline-flex items-center rounded-full border font-medium tracking-[0.16em] whitespace-nowrap uppercase backdrop-blur-md",
         sizes[size],
         className,
       )}

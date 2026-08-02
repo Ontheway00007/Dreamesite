@@ -1,13 +1,24 @@
 import { Section } from "@/components/layout/section";
 import { RevealGroup, RevealItem } from "@/components/motion/reveal";
+import { SectionHeading } from "@/components/ui/section-heading";
 import { Statistic } from "@/components/ui/statistic";
 import { companyStatistics } from "@/content/statistics";
 
+/**
+ * Every figure here is derived from project data, so the section stays accurate
+ * on its own. See `content/statistics.ts` for why no volume or history figures
+ * are published.
+ */
 export function StatisticsSection() {
   return (
     <Section tone="alt" spacing="lg" divided>
+      <SectionHeading
+        eyebrow="At a glance"
+        title="How the work is structured."
+      />
+
       <RevealGroup
-        className="grid grid-cols-2 gap-x-8 gap-y-14 lg:grid-cols-4"
+        className="mt-16 grid grid-cols-1 gap-x-8 gap-y-14 sm:grid-cols-3"
         stagger={0.1}
       >
         {companyStatistics.map((statistic) => (
