@@ -4,7 +4,6 @@ import { PropertyMedia } from "@/components/property/property-media";
 import { PropertySpecs } from "@/components/property/property-specs";
 import { StatusBadge } from "@/components/property/status-badge";
 import { Button } from "@/components/ui/button";
-import { locationPrecisionLabel } from "@/lib/properties/privacy";
 import { propertyHref } from "@/lib/routes";
 import { cn } from "@/lib/utils/cn";
 import type { Property } from "@/types";
@@ -28,7 +27,7 @@ export function PropertyPreview({
   onClose,
   className,
 }: PropertyPreviewProps) {
-  const precisionNote = locationPrecisionLabel(property.locationPrecision);
+  const { address, label } = property.location;
 
   return (
     <article
@@ -55,7 +54,7 @@ export function PropertyPreview({
                 {property.name}
               </h3>
               <p className="text-foreground-subtle mt-1 text-xs tracking-[0.12em] uppercase">
-                {property.suburb} {property.state} {property.postcode}
+                {address ?? `${property.suburb} ${property.state}`}
               </p>
             </div>
 
@@ -81,9 +80,9 @@ export function PropertyPreview({
             </p>
           ) : null}
 
-          {precisionNote ? (
+          {label ? (
             <p className="text-foreground-subtle mt-2 text-[0.6875rem]">
-              {precisionNote}
+              {label}
             </p>
           ) : null}
 

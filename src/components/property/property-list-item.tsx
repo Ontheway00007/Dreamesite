@@ -3,7 +3,6 @@
 import { PropertyMedia } from "@/components/property/property-media";
 import { PropertySpecs } from "@/components/property/property-specs";
 import { StatusBadge } from "@/components/property/status-badge";
-import { locationPrecisionLabel } from "@/lib/properties/privacy";
 import { cn } from "@/lib/utils/cn";
 import type { Property } from "@/types";
 
@@ -26,7 +25,7 @@ export function PropertyListItem({
   isSelected,
   onSelect,
 }: PropertyListItemProps) {
-  const precisionNote = locationPrecisionLabel(property.locationPrecision);
+  const { address, label } = property.location;
 
   return (
     <li data-property-id={property.id}>
@@ -68,7 +67,7 @@ export function PropertyListItem({
           </div>
 
           <p className="text-foreground-subtle mt-1 text-xs tracking-[0.12em] uppercase">
-            {property.suburb} {property.state} {property.postcode}
+            {address ?? `${property.suburb} ${property.state}`}
           </p>
 
           <div className="mt-3">
@@ -77,9 +76,9 @@ export function PropertyListItem({
 
           <PropertySpecs property={property} size="sm" className="mt-3" />
 
-          {precisionNote ? (
+          {label ? (
             <p className="text-foreground-subtle mt-2 text-[0.6875rem]">
-              {precisionNote}
+              {label}
             </p>
           ) : null}
         </div>

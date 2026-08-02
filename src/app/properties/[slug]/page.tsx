@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { ArrowLeft, ArrowRight, Navigation } from "lucide-react";
 
 import { Container } from "@/components/layout/container";
 import { PropertyMedia } from "@/components/property/property-media";
@@ -10,7 +10,6 @@ import { StatusBadge } from "@/components/property/status-badge";
 import { Button } from "@/components/ui/button";
 import { Heading, Text } from "@/components/ui/typography";
 import { propertyStatusTokens } from "@/lib/design/property-status";
-import { locationPrecisionLabel } from "@/lib/properties/privacy";
 import {
   getPropertyBySlug,
   getPropertySlugs,
@@ -51,7 +50,7 @@ export async function generateMetadata({
 
   return {
     title: `${property.name}, ${property.suburb}`,
-    description: `${property.summary} ${status} in ${property.suburb} ${property.state}.`,
+    description: `${property.summary} ${status} in ${property.suburb} ${property.state}.`.trim(),
     alternates: { canonical: `${PROPERTIES_ROUTE}/${property.slug}` },
   };
 }
@@ -64,10 +63,13 @@ export default async function PropertyPage({ params }: PropertyPageProps) {
     notFound();
   }
 
-  const precisionNote = locationPrecisionLabel(property.locationPrecision);
+  const { address, label, accuracyNote, allowDirections } = property.location;
   const details = [property.priceDisplay, property.completionLabel].filter(
     Boolean,
   );
+  const directionsHref = allowDirections
+    ? `https://www.google.com/maps/search/?api=1&query=${property.location.publicLatitude},${property.location.publicLongitude}`
+    : null;
 
   return (
     <Container className="pt-(--header-height)" width="content">
@@ -90,7 +92,7 @@ export default async function PropertyPage({ params }: PropertyPageProps) {
             {property.name}
           </Heading>
           <p className="text-foreground-subtle mt-3 text-sm tracking-[0.16em] uppercase">
-            {property.suburb} {property.state} {property.postcode}
+            {address ?? `${property.suburb} ${property.state}`}
           </p>
 
           <Text size="lead" className="mt-8">
@@ -109,10 +111,32 @@ export default async function PropertyPage({ params }: PropertyPageProps) {
             </Text>
           ) : null}
 
-          {precisionNote ? (
-            <Text size="small" tone="subtle" className="mt-2">
-              {precisionNote}
-            </Text>
+          {label || accuracyNote || directionsHref ? (
+            <div className="border-border mt-8 flex flex-wrap items-center gap-x-6 gap-y-3 border-t pt-6">
+              <div>
+                {label ? (
+                  <p className="text-foreground text-sm font-medium">{label}</p>
+                ) : null}
+                {accuracyNote ? (
+                  <Text size="small" tone="subtle" className="mt-1">
+                    {accuracyNote}
+                  </Text>
+                ) : null}
+              </div>
+
+              {/* Only offered when the property's settings allow directions. */}
+              {directionsHref ? (
+                <a
+                  href={directionsHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent hover:text-accent-strong ml-auto inline-flex items-center gap-2 text-xs font-medium tracking-[0.16em] uppercase transition-colors duration-(--duration-fast)"
+                >
+                  <Navigation size={14} aria-hidden />
+                  Open in Maps
+                </a>
+              ) : null}
+            </div>
           ) : null}
 
           <div className="border-border mt-12 border-t pt-8">

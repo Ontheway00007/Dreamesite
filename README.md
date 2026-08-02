@@ -112,19 +112,65 @@ top of it.
 asynchronous so Supabase can replace the local file in
 `content/properties.ts` without touching a single component.
 
-Every record passes through `lib/properties/privacy.ts` on the way out, which is
-what makes the privacy rules enforceable rather than aspirational:
+Every record passes through `lib/properties/privacy.ts` on the way out. That
+module is the only place a stored position is read, and `toPublicProperty` is the
+only way a property leaves the data layer, so the rules are enforceable rather
+than aspirational.
 
-| Precision     | Published position                                  |
-| ------------- | --------------------------------------------------- |
-| `exact`       | Passed through — only for homes on the market        |
-| `approximate` | Rounded to ~110 m, enough for the right neighbourhood |
-| `private`     | No coordinates at all; the home stays in the list    |
+### Location visibility
 
-Sold and completed homes are forced down to `approximate` even if the record
-says `exact`, because they are someone's residence. Unusable coordinates are
-dropped rather than published as a broken pin. The UI labels any reduced pin as
-"Approximate location" so it never implies street-level accuracy.
+Each property chooses its own visibility. **Status has no influence on it** — a
+sold home can be shown exactly, and a home for sale can be hidden.
+
+| Visibility    | Published marker                                                            | Public label                    |
+| ------------- | --------------------------------------------------------------------------- | ------------------------------- |
+| `exact`       | The stored position                                                         | none                            |
+| `approximate` | A fixed position within `privacyRadiusMeters` (100 m – 5 km)                | "Approximate location"          |
+| `suburb`      | The suburb's reference position, derived from the suburb, not the property   | "Suburb only"                   |
+| `hidden`      | No marker. The home stays in every list                                     | "Location available on enquiry" |
+
+**How approximation works, and why it is safe.** The position is quantised to a
+grid whose cell is the privacy radius, and the cell centre is published. Every
+position inside a cell produces the same output, so the original cannot be
+recovered — unlike a reversible offset, which anyone reading this repository
+could undo. A small displacement derived from the *cell* is then applied so the
+result does not sit on an obvious grid; because it depends only on the cell, it
+adds no information about the home. The result is deterministic, so a marker
+never moves between page loads.
+
+### Other per-property controls
+
+- **Manual marker.** `publicMarkerMode: "manual"` publishes coordinates an
+  administrator placed by hand. The stored position is never modified, and
+  `hidden` still wins over a manual marker.
+- **Address visibility.** House number, street, suburb and postcode are toggled
+  independently, so "27 Example Street, Craigieburn VIC 3064", "Example Street",
+  "Craigieburn VIC" and no address are all expressible. A house number is never
+  published without its street.
+- **Directions.** `allowDirections` gates the "Open in Maps" action, and it is
+  withheld automatically when there is no marker to navigate to.
+
+### Public and private data
+
+`PropertyRecord` holds the private position, the address parts and the privacy
+settings. `Property` holds neither: `toPublicProperty` copies public fields across
+**explicitly** rather than spreading and deleting, so a field added to the record
+later — an owner's phone number, an internal note — stays private until someone
+deliberately publishes it.
+
+The demonstration data is fictional: plan-type names, no street names or house
+numbers, no invented prices or dates, and general coordinates chosen so no
+position corresponds to a real private residence. It spans all four visibility
+modes, and deliberately includes a sold home shown exactly and a completed home
+hidden, to prove status never drives visibility. Replace the data and review
+every `privacy` block before launch.
+
+### Ready for the admin dashboard
+
+`lib/properties/privacy-options.ts` holds the option metadata — labels,
+descriptions, radii, address presets and runtime guards — that a future admin
+form will render. No dashboard exists yet; the vocabulary lives beside the rules
+so the dashboard and the public site can never describe a setting differently.
 
 The demonstration data is fictional: plan-type names, no street addresses, no
 invented prices or dates, and general coordinates chosen so no pin lands on a

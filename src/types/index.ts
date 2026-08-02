@@ -17,28 +17,87 @@ export type ArchitecturalVariant =
   | "double-storey"
   | "townhouse";
 
-/**
- * How precisely a property's position may be published.
- *
- * - `exact`: the pin may sit on the building. Only for homes that are on the
- *   market and have been approved for exact display.
- * - `approximate`: the pin is reduced to a neighbourhood-level position.
- * - `private`: no coordinates are published at all. The property still appears
- *   in the list, but never on the map.
- */
-export type LocationPrecision = "exact" | "approximate" | "private";
+/* -------------------------------------------------------------------------- */
+/* Location privacy                                                           */
+/* -------------------------------------------------------------------------- */
 
-/** Fields shared by every representation of a property. */
+/**
+ * How precisely a property's position may be published. Chosen per property and
+ * deliberately independent of its status: a sold home may be shown exactly if
+ * that is the decision, and a home for sale may be hidden.
+ *
+ * - `exact`: publish the stored position.
+ * - `approximate`: publish a deterministic position within `privacyRadiusMeters`.
+ * - `suburb`: publish the suburb's reference position, derived from the suburb
+ *   rather than from the property, so nothing about the real position is exposed.
+ * - `hidden`: publish no position at all. The property still appears in lists.
+ */
+export type LocationVisibility = "exact" | "approximate" | "suburb" | "hidden";
+
+/** Approximation radii offered to an administrator, in metres. */
+export type PrivacyRadiusMeters = 100 | 250 | 500 | 1000 | 2000 | 5000;
+
+/**
+ * Who places the public marker.
+ *
+ * - `automatic`: derived from the stored position and the visibility rules.
+ * - `manual`: an administrator positioned it. The stored position is untouched.
+ */
+export type PublicMarkerMode = "automatic" | "manual";
+
+/**
+ * Which parts of the street address may be published. Each part is independent,
+ * so "27 Example Street, Craigieburn VIC 3064", "Example Street", "Craigieburn
+ * VIC" and no address at all are all expressible.
+ */
+export interface AddressVisibility {
+  readonly houseNumber: boolean;
+  readonly street: boolean;
+  readonly suburb: boolean;
+  readonly postcode: boolean;
+}
+
+/** Per-property privacy settings. The future admin dashboard edits exactly this. */
+export interface PropertyPrivacySettings {
+  readonly locationVisibility: LocationVisibility;
+  /** Applies when `locationVisibility` is `approximate`. */
+  readonly privacyRadiusMeters: PrivacyRadiusMeters;
+  readonly publicMarkerMode: PublicMarkerMode;
+  /** Marker chosen by an administrator. Used when the mode is `manual`. */
+  readonly manualLatitude?: number;
+  readonly manualLongitude?: number;
+  readonly addressVisibility: AddressVisibility;
+  /** Whether "Open in Maps" and directions actions may be offered. */
+  readonly allowDirections: boolean;
+  /**
+   * Suburb whose reference position is used when visibility is `suburb`.
+   * Defaults to the property's own suburb.
+   */
+  readonly suburbReference?: string;
+}
+
+/** Street-level address parts. Never published as-is. */
+export interface PropertyAddressRecord {
+  readonly houseNumber?: string;
+  readonly street?: string;
+  readonly postcode: string;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Property                                                                   */
+/* -------------------------------------------------------------------------- */
+
+/** Fields that are public for every property, whatever its privacy settings. */
 export interface PropertyBase {
   readonly id: string;
   /** URL segment for the property detail route. */
   readonly slug: string;
   readonly name: string;
   readonly summary: string;
+  /** Listings are organised by suburb, so the suburb itself is always public. */
   readonly suburb: string;
   /** Australian state or territory abbreviation, e.g. "VIC". */
   readonly state: string;
-  readonly postcode: string;
   readonly status: PropertyStatus;
   readonly bedrooms: number;
   readonly bathrooms: number;
@@ -61,31 +120,54 @@ export interface PropertyBase {
 }
 
 /**
- * The stored record, including the exact position.
+ * The stored record: the private position, the full address and the privacy
+ * settings that govern them.
  *
- * This shape never reaches the browser: the repository converts it with
- * `toPublicProperty` first, which is what enforces the privacy rules.
+ * This shape must never reach the browser. `toPublicProperty` is the only way
+ * out, and it is what turns these settings into a publishable location.
  */
 export interface PropertyRecord extends PropertyBase {
-  readonly locationPrecision: LocationPrecision;
-  readonly latitude: number;
-  readonly longitude: number;
+  readonly privateLatitude: number;
+  readonly privateLongitude: number;
+  readonly address: PropertyAddressRecord;
+  readonly privacy: PropertyPrivacySettings;
 }
 
 /**
- * A property as published to the UI. Coordinates are already reduced to the
- * precision the record allows, and are absent entirely for private locations.
+ * The published location. Everything here is safe to send to a browser: the
+ * coordinates have already been reduced, removed or replaced, and the address is
+ * a finished string containing only the permitted parts.
  */
-export interface Property extends PropertyBase {
-  readonly locationPrecision: LocationPrecision;
-  readonly latitude?: number;
-  readonly longitude?: number;
+export interface PublicPropertyLocation {
+  readonly visibility: LocationVisibility;
+  readonly publicLatitude?: number;
+  readonly publicLongitude?: number;
+  /** How far the marker may be from the home, when that is meaningful. */
+  readonly accuracyRadiusMeters?: number;
+  readonly markerMode: PublicMarkerMode;
+  /** Formatted address, or null when no address may be shown. */
+  readonly address: string | null;
+  readonly allowDirections: boolean;
+  /** Short caveat for cards and lists, e.g. "Approximate location". */
+  readonly label: string | null;
+  /** Fuller explanation for the property page. */
+  readonly accuracyNote: string | null;
 }
 
-/** A published property that has coordinates and can be drawn on the map. */
+/** A property as published to the UI. */
+export interface Property extends PropertyBase {
+  readonly location: PublicPropertyLocation;
+}
+
+/** A published location that has coordinates. */
+export type MappableLocation = PublicPropertyLocation & {
+  readonly publicLatitude: number;
+  readonly publicLongitude: number;
+};
+
+/** A published property that can be drawn on the map. */
 export type MappableProperty = Property & {
-  readonly latitude: number;
-  readonly longitude: number;
+  readonly location: MappableLocation;
 };
 
 /** The subset of a property the card needs. */

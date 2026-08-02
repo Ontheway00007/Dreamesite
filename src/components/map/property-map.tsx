@@ -454,7 +454,10 @@ export default function PropertyMap({
       return;
     }
 
-    const center: [number, number] = [selected.longitude, selected.latitude];
+    const center: [number, number] = [
+      selected.location.publicLongitude,
+      selected.location.publicLatitude,
+    ];
     const zoom = map.getZoom();
     const isVisible = map.getBounds()?.contains(center) ?? false;
 

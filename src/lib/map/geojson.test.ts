@@ -5,7 +5,23 @@ import {
   countMappable,
   propertiesToGeoJson,
 } from "@/lib/map/geojson";
-import type { Property } from "@/types";
+import type { Property, PublicPropertyLocation } from "@/types";
+
+function location(
+  overrides: Partial<PublicPropertyLocation> = {},
+): PublicPropertyLocation {
+  return {
+    visibility: "exact",
+    publicLatitude: -37.53,
+    publicLongitude: 144.88,
+    markerMode: "automatic",
+    address: null,
+    allowDirections: false,
+    label: null,
+    accuracyNote: null,
+    ...overrides,
+  };
+}
 
 function property(overrides: Partial<Property> & { id: string }): Property {
   return {
@@ -14,17 +30,14 @@ function property(overrides: Partial<Property> & { id: string }): Property {
     summary: "Summary",
     suburb: "Mickleham",
     state: "VIC",
-    postcode: "3064",
     status: "move-in-ready",
     bedrooms: 4,
     bathrooms: 2,
     carSpaces: 2,
     landSize: 400,
     placeholderVariant: "single-storey",
-    locationPrecision: "exact",
-    latitude: -37.53,
-    longitude: 144.88,
     isFeatured: false,
+    location: location(),
     ...overrides,
   };
 }
@@ -33,7 +46,7 @@ describe("propertiesToGeoJson", () => {
   it("builds one point feature per mappable property", () => {
     const collection = propertiesToGeoJson([
       property({ id: "a" }),
-      property({ id: "b", latitude: -37.6, longitude: 144.94 }),
+      property({ id: "b", location: location({ publicLatitude: -37.6, publicLongitude: 144.94 }) }),
     ]);
 
     expect(collection.type).toBe("FeatureCollection");
@@ -42,7 +55,7 @@ describe("propertiesToGeoJson", () => {
 
   it("writes coordinates in GeoJSON order, longitude first", () => {
     const [feature] = propertiesToGeoJson([
-      property({ id: "a", latitude: -37.53, longitude: 144.88 }),
+      property({ id: "a", location: location({ publicLatitude: -37.53, publicLongitude: 144.88 }) }),
     ]).features;
 
     expect(feature.geometry.coordinates).toEqual([144.88, -37.53]);
@@ -55,14 +68,16 @@ describe("propertiesToGeoJson", () => {
     expect(feature.properties.id).toBe("a");
   });
 
-  it("omits properties with no published location", () => {
+  it("omits properties with no published position", () => {
     const collection = propertiesToGeoJson([
       property({ id: "a" }),
       property({
-        id: "private",
-        locationPrecision: "private",
-        latitude: undefined,
-        longitude: undefined,
+        id: "hidden",
+        location: location({
+          visibility: "hidden",
+          publicLatitude: undefined,
+          publicLongitude: undefined,
+        }),
       }),
     ]);
 
@@ -75,7 +90,6 @@ describe("propertiesToGeoJson", () => {
     expect(Object.keys(feature.properties).sort()).toEqual([
       "id",
       "name",
-      "precision",
       "slug",
       "status",
       "suburb",
@@ -90,8 +104,14 @@ describe("propertiesToGeoJson", () => {
 describe("boundsOfProperties", () => {
   it("returns the south-west and north-east corners", () => {
     const bounds = boundsOfProperties([
-      property({ id: "a", latitude: -37.53, longitude: 144.88 }),
-      property({ id: "b", latitude: -37.61, longitude: 144.96 }),
+      property({
+        id: "a",
+        location: location({ publicLatitude: -37.53, publicLongitude: 144.88 }),
+      }),
+      property({
+        id: "b",
+        location: location({ publicLatitude: -37.61, publicLongitude: 144.96 }),
+      }),
     ]);
 
     expect(bounds).toEqual([
@@ -105,10 +125,12 @@ describe("boundsOfProperties", () => {
     expect(
       boundsOfProperties([
         property({
-          id: "private",
-          locationPrecision: "private",
-          latitude: undefined,
-          longitude: undefined,
+          id: "hidden",
+          location: location({
+            visibility: "hidden",
+            publicLatitude: undefined,
+            publicLongitude: undefined,
+          }),
         }),
       ]),
     ).toBeNull();
@@ -120,7 +142,13 @@ describe("countMappable", () => {
     expect(
       countMappable([
         property({ id: "a" }),
-        property({ id: "b", latitude: undefined, longitude: undefined }),
+        property({
+          id: "b",
+          location: location({
+            publicLatitude: undefined,
+            publicLongitude: undefined,
+          }),
+        }),
       ]),
     ).toBe(1);
   });

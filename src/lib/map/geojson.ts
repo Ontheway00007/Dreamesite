@@ -1,13 +1,15 @@
 import type { Feature, FeatureCollection, Point } from "geojson";
 
 import { isMappable } from "@/lib/properties/privacy";
-import type { LocationPrecision, Property, PropertyStatus } from "@/types";
+import type { Property, PropertyStatus } from "@/types";
 
 /**
  * Property data as Mapbox consumes it.
  *
- * One GeoJSON source feeds clustering, the markers and the hover and selected
- * layers, so adding properties costs no extra React components.
+ * Built from published locations only, so a coordinate can only reach the map if
+ * the privacy pipeline allowed it. One GeoJSON source feeds clustering, the
+ * markers and the hover and selected layers, so adding properties costs no extra
+ * React components.
  */
 
 export interface PropertyFeatureProperties {
@@ -16,7 +18,6 @@ export interface PropertyFeatureProperties {
   name: string;
   suburb: string;
   status: PropertyStatus;
-  precision: LocationPrecision;
 }
 
 export type PropertyFeature = Feature<Point, PropertyFeatureProperties>;
@@ -31,8 +32,8 @@ export const emptyFeatureCollection: PropertyFeatureCollection = {
 };
 
 /**
- * Builds the source data. Properties without a publishable position — private
- * locations, or records with unusable coordinates — are simply absent from the
+ * Builds the source data. Properties without a published position — hidden
+ * locations, or suburbs with no reference position — are simply absent from the
  * map while remaining in the list.
  */
 export function propertiesToGeoJson(
@@ -46,7 +47,10 @@ export function propertiesToGeoJson(
       id: property.id,
       geometry: {
         type: "Point",
-        coordinates: [property.longitude, property.latitude],
+        coordinates: [
+          property.location.publicLongitude,
+          property.location.publicLatitude,
+        ],
       },
       properties: {
         id: property.id,
@@ -54,7 +58,6 @@ export function propertiesToGeoJson(
         name: property.name,
         suburb: property.suburb,
         status: property.status,
-        precision: property.locationPrecision,
       },
     })),
   };
@@ -70,8 +73,10 @@ export function boundsOfProperties(
     return null;
   }
 
-  const longitudes = mappable.map((property) => property.longitude);
-  const latitudes = mappable.map((property) => property.latitude);
+  const longitudes = mappable.map(
+    (property) => property.location.publicLongitude,
+  );
+  const latitudes = mappable.map((property) => property.location.publicLatitude);
 
   return [
     [Math.min(...longitudes), Math.min(...latitudes)],

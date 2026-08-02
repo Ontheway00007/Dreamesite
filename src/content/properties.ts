@@ -1,3 +1,4 @@
+import { defaultPropertyPrivacy } from "@/lib/properties/privacy";
 import type { PropertyRecord } from "@/types";
 
 /**
@@ -7,18 +8,22 @@ import type { PropertyRecord } from "@/types";
  * before Supabase is connected. Every entry is fictional:
  *
  * - The names describe plan types, not homes that exist.
- * - No street addresses are stored, and no price figures are invented.
+ * - No street names or house numbers are stored, because concept façades have no
+ *   address. Postcodes are the real suburb postcodes.
+ * - No price figures or completion dates are invented.
  * - Coordinates are general points inside the three confirmed suburbs, chosen
- *   near arterial roads and undeveloped land so that no pin lands on a real
- *   private residence. They must be replaced with surveyed positions, and each
- *   record's `locationPrecision` reviewed, before this data goes public.
+ *   near arterial roads and undeveloped land so that no position corresponds to
+ *   a real private residence. Replace them with surveyed positions, and review
+ *   every `privacy` block, before this data goes public.
  *
- * `locationPrecision` is enforced by `lib/properties/privacy.ts`, not here: the
- * repository reduces or removes coordinates on the way out, so a mistake in this
- * file cannot leak an exact position for a home that should not have one.
+ * Privacy is per property and independent of status: the spread of settings
+ * below is deliberate, and includes a sold home shown exactly and a completed
+ * home hidden entirely, to prove that status never drives visibility. For real
+ * homes those choices belong to whoever has the owner's permission.
  *
  * Only the three confirmed build areas appear: Mickleham, Craigieburn and
- * Donnybrook. Adding a suburb here adds it to the filters automatically.
+ * Donnybrook. Adding a suburb here adds it to the filters automatically, and it
+ * needs a matching entry in `content/suburb-references.ts`.
  */
 export const propertyRecords: readonly PropertyRecord[] = [
   {
@@ -29,7 +34,6 @@ export const propertyRecords: readonly PropertyRecord[] = [
       "Single level, north-facing living, courtyard to the rear boundary.",
     suburb: "Mickleham",
     state: "VIC",
-    postcode: "3064",
     status: "move-in-ready",
     bedrooms: 4,
     bathrooms: 2,
@@ -38,10 +42,15 @@ export const propertyRecords: readonly PropertyRecord[] = [
     houseSize: 212,
     placeholderVariant: "single-storey",
     priceDisplay: "Price on application",
-    locationPrecision: "exact",
-    latitude: -37.5312,
-    longitude: 144.8861,
     isFeatured: true,
+    privateLatitude: -37.5312,
+    privateLongitude: 144.8861,
+    address: { postcode: "3064" },
+    privacy: {
+      ...defaultPropertyPrivacy,
+      locationVisibility: "exact",
+      allowDirections: true,
+    },
   },
   {
     id: "concept-double-storey",
@@ -51,7 +60,6 @@ export const propertyRecords: readonly PropertyRecord[] = [
       "Two storey, upper level retreat, double garage under the main roofline.",
     suburb: "Craigieburn",
     state: "VIC",
-    postcode: "3064",
     status: "under-construction",
     bedrooms: 4,
     bathrooms: 3,
@@ -61,10 +69,16 @@ export const propertyRecords: readonly PropertyRecord[] = [
     placeholderVariant: "double-storey",
     completionLabel: "Completion window to be confirmed",
     priceDisplay: "Price on application",
-    locationPrecision: "exact",
-    latitude: -37.5974,
-    longitude: 144.9412,
     isFeatured: true,
+    privateLatitude: -37.5974,
+    privateLongitude: 144.9412,
+    address: { postcode: "3064" },
+    privacy: {
+      ...defaultPropertyPrivacy,
+      locationVisibility: "approximate",
+      privacyRadiusMeters: 500,
+      allowDirections: true,
+    },
   },
   {
     id: "concept-townhouse",
@@ -73,7 +87,6 @@ export const propertyRecords: readonly PropertyRecord[] = [
     summary: "Compact footprint, shared party wall, private upper terrace.",
     suburb: "Donnybrook",
     state: "VIC",
-    postcode: "3064",
     status: "completed",
     bedrooms: 3,
     bathrooms: 2,
@@ -81,10 +94,15 @@ export const propertyRecords: readonly PropertyRecord[] = [
     landSize: 262,
     houseSize: 168,
     placeholderVariant: "townhouse",
-    locationPrecision: "approximate",
-    latitude: -37.5071,
-    longitude: 144.9536,
     isFeatured: true,
+    privateLatitude: -37.5071,
+    privateLongitude: 144.9536,
+    address: { postcode: "3064" },
+    // A completed home hidden entirely: status did not decide this.
+    privacy: {
+      ...defaultPropertyPrivacy,
+      locationVisibility: "hidden",
+    },
   },
   {
     id: "concept-wide-frontage",
@@ -94,7 +112,6 @@ export const propertyRecords: readonly PropertyRecord[] = [
       "Single level across a wide lot, separate living and dining, double garage.",
     suburb: "Mickleham",
     state: "VIC",
-    postcode: "3064",
     status: "move-in-ready",
     bedrooms: 4,
     bathrooms: 2,
@@ -103,10 +120,15 @@ export const propertyRecords: readonly PropertyRecord[] = [
     houseSize: 231,
     placeholderVariant: "single-storey",
     priceDisplay: "Price on application",
-    locationPrecision: "exact",
-    latitude: -37.5389,
-    longitude: 144.8924,
     isFeatured: false,
+    privateLatitude: -37.5389,
+    privateLongitude: 144.8924,
+    address: { postcode: "3064" },
+    // Available, but published at suburb level only.
+    privacy: {
+      ...defaultPropertyPrivacy,
+      locationVisibility: "suburb",
+    },
   },
   {
     id: "concept-courtyard",
@@ -116,7 +138,6 @@ export const propertyRecords: readonly PropertyRecord[] = [
       "Three bedrooms wrapped around a sheltered courtyard, single garage.",
     suburb: "Craigieburn",
     state: "VIC",
-    postcode: "3064",
     status: "move-in-ready",
     bedrooms: 3,
     bathrooms: 2,
@@ -125,10 +146,16 @@ export const propertyRecords: readonly PropertyRecord[] = [
     houseSize: 164,
     placeholderVariant: "townhouse",
     priceDisplay: "Price on application",
-    locationPrecision: "exact",
-    latitude: -37.6042,
-    longitude: 144.9331,
     isFeatured: false,
+    privateLatitude: -37.6042,
+    privateLongitude: 144.9331,
+    address: { postcode: "3064" },
+    privacy: {
+      ...defaultPropertyPrivacy,
+      locationVisibility: "approximate",
+      privacyRadiusMeters: 250,
+      allowDirections: true,
+    },
   },
   {
     id: "concept-corner-block",
@@ -138,7 +165,6 @@ export const propertyRecords: readonly PropertyRecord[] = [
       "Two storey on a corner lot, dual street presentation, upper level living.",
     suburb: "Donnybrook",
     state: "VIC",
-    postcode: "3064",
     status: "under-construction",
     bedrooms: 5,
     bathrooms: 3,
@@ -148,10 +174,21 @@ export const propertyRecords: readonly PropertyRecord[] = [
     placeholderVariant: "double-storey",
     completionLabel: "Completion window to be confirmed",
     priceDisplay: "Price on application",
-    locationPrecision: "exact",
-    latitude: -37.5008,
-    longitude: 144.9601,
     isFeatured: false,
+    privateLatitude: -37.5008,
+    privateLongitude: 144.9601,
+    address: { postcode: "3064" },
+    // Marker positioned by hand, for example at an estate entrance. The stored
+    // position above is untouched.
+    privacy: {
+      ...defaultPropertyPrivacy,
+      locationVisibility: "approximate",
+      privacyRadiusMeters: 1000,
+      publicMarkerMode: "manual",
+      manualLatitude: -37.4995,
+      manualLongitude: 144.9563,
+      allowDirections: true,
+    },
   },
   {
     id: "concept-dual-living",
@@ -161,7 +198,6 @@ export const propertyRecords: readonly PropertyRecord[] = [
       "Two storey with a ground floor guest suite and separate second living area.",
     suburb: "Craigieburn",
     state: "VIC",
-    postcode: "3064",
     status: "under-construction",
     bedrooms: 5,
     bathrooms: 3,
@@ -170,10 +206,15 @@ export const propertyRecords: readonly PropertyRecord[] = [
     houseSize: 288,
     placeholderVariant: "double-storey",
     completionLabel: "Completion window to be confirmed",
-    locationPrecision: "approximate",
-    latitude: -37.5906,
-    longitude: 144.9487,
     isFeatured: false,
+    privateLatitude: -37.5906,
+    privateLongitude: 144.9487,
+    address: { postcode: "3064" },
+    privacy: {
+      ...defaultPropertyPrivacy,
+      locationVisibility: "approximate",
+      privacyRadiusMeters: 1000,
+    },
   },
   {
     id: "concept-rear-terrace",
@@ -182,7 +223,6 @@ export const propertyRecords: readonly PropertyRecord[] = [
     summary: "Townhouse plan with a north-facing rear terrace and study nook.",
     suburb: "Mickleham",
     state: "VIC",
-    postcode: "3064",
     status: "sold",
     bedrooms: 3,
     bathrooms: 2,
@@ -190,10 +230,17 @@ export const propertyRecords: readonly PropertyRecord[] = [
     landSize: 248,
     houseSize: 158,
     placeholderVariant: "townhouse",
-    locationPrecision: "approximate",
-    latitude: -37.5265,
-    longitude: 144.8802,
     isFeatured: false,
+    privateLatitude: -37.5265,
+    privateLongitude: 144.8802,
+    address: { postcode: "3064" },
+    // Sold and still shown exactly: only ever appropriate as a display home or
+    // with the owner's written permission.
+    privacy: {
+      ...defaultPropertyPrivacy,
+      locationVisibility: "exact",
+      allowDirections: false,
+    },
   },
   {
     id: "concept-compact-single",
@@ -203,7 +250,6 @@ export const propertyRecords: readonly PropertyRecord[] = [
       "Three bedrooms on a compact lot, open plan living, single garage.",
     suburb: "Donnybrook",
     state: "VIC",
-    postcode: "3064",
     status: "sold",
     bedrooms: 3,
     bathrooms: 2,
@@ -211,10 +257,20 @@ export const propertyRecords: readonly PropertyRecord[] = [
     landSize: 294,
     houseSize: 152,
     placeholderVariant: "single-storey",
-    locationPrecision: "private",
-    latitude: -37.5124,
-    longitude: 144.9498,
     isFeatured: false,
+    privateLatitude: -37.5124,
+    privateLongitude: 144.9498,
+    address: { postcode: "3064" },
+    privacy: {
+      ...defaultPropertyPrivacy,
+      locationVisibility: "hidden",
+      addressVisibility: {
+        houseNumber: false,
+        street: false,
+        suburb: true,
+        postcode: false,
+      },
+    },
   },
   {
     id: "concept-garden-outlook",
@@ -224,7 +280,6 @@ export const propertyRecords: readonly PropertyRecord[] = [
       "Single level with living opening to a landscaped garden, double garage.",
     suburb: "Craigieburn",
     state: "VIC",
-    postcode: "3064",
     status: "completed",
     bedrooms: 4,
     bathrooms: 2,
@@ -232,9 +287,13 @@ export const propertyRecords: readonly PropertyRecord[] = [
     landSize: 465,
     houseSize: 224,
     placeholderVariant: "single-storey",
-    locationPrecision: "approximate",
-    latitude: -37.6088,
-    longitude: 144.9452,
     isFeatured: false,
+    privateLatitude: -37.6088,
+    privateLongitude: 144.9452,
+    address: { postcode: "3064" },
+    privacy: {
+      ...defaultPropertyPrivacy,
+      locationVisibility: "suburb",
+    },
   },
 ] as const;
