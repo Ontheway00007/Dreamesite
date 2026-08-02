@@ -16,6 +16,11 @@ import {
 export interface UsePropertyFiltersResult {
   filters: PropertyFilters;
   view: ViewMode;
+  /**
+   * Slug of a property to open on arrival, from `?property=`. Used by property
+   * pages linking back to the map.
+   */
+  initialPropertySlug: string | null;
   setFilter: <Key extends keyof PropertyFilters>(
     key: Key,
     value: PropertyFilters[Key],
@@ -87,5 +92,12 @@ export function usePropertyFilters(
     commit(defaultFilters, view);
   }, [commit, view]);
 
-  return { filters, view, setFilter, setView, reset };
+  return {
+    filters,
+    view,
+    initialPropertySlug: searchParams.get("property"),
+    setFilter,
+    setView,
+    reset,
+  };
 }

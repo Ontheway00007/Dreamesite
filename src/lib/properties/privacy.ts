@@ -3,7 +3,6 @@ import type {
   AddressVisibility,
   LocationVisibility,
   MappableProperty,
-  PrivacyRadiusMeters,
   Property,
   PropertyAddressRecord,
   PropertyPrivacySettings,
@@ -165,28 +164,71 @@ export function locationLabel(visibility: LocationVisibility): string | null {
   }
 }
 
-function formatDistance(meters: number): string {
-  return meters >= 1000 ? `${meters / 1000} km` : `${meters} m`;
-}
-
-/** Fuller explanation for the property page. */
+/**
+ * Fuller explanation for the property page.
+ *
+ * Deliberately makes no promise about distance. Quoting a radius would invite a
+ * visitor to draw a circle and search inside it, and would state a guarantee
+ * that depends on the grid the marker happens to fall in. The public message is
+ * that the location is generalised on purpose; the radius stays internal.
+ */
 export function locationAccuracyNote(
   visibility: LocationVisibility,
-  radiusMeters: PrivacyRadiusMeters,
 ): string | null {
   switch (visibility) {
     case "exact":
       return null;
     case "approximate":
-      return `The marker is placed within ${formatDistance(radiusMeters)} of this home.`;
+      return "The map location is approximate. It has been generalised on purpose to protect the owner's privacy.";
     case "suburb":
-      return "The marker shows the suburb, not the home itself.";
+      return "The map shows the suburb rather than the home itself, to protect the owner's privacy.";
     case "hidden":
-      return "We share the location of this home directly with enquiring buyers.";
+      return "We share the location of this home directly with buyers who enquire.";
   }
 }
 
-/** Resolves the coordinates that may be published, if any. */
+/**
+ * Whether directions may be offered, before checking that a marker exists.
+ *
+ * Directions are only sensible for an exact position: sending someone to a
+ * generalised marker either misleads them or narrows down the real home. An
+ * administrator can still override this per property.
+ */
+export function defaultAllowDirections(visibility: LocationVisibility): boolean {
+  return visibility === "exact";
+}
+
+/** Resolves the directions setting, applying the default when unset. */
+export function resolveAllowDirections(
+  privacy: PropertyPrivacySettings,
+): boolean {
+  if (privacy.locationVisibility === "hidden") {
+    return false;
+  }
+
+  return (
+    privacy.allowDirections ??
+    defaultAllowDirections(privacy.locationVisibility)
+  );
+}
+
+/**
+ * Resolves the coordinates that may be published, if any.
+ *
+ * The full rule, in precedence order:
+ *
+ * | Visibility  | Marker mode | Published marker                        |
+ * | ----------- | ----------- | --------------------------------------- |
+ * | hidden      | either      | none — hidden always wins                |
+ * | any other   | manual      | the administrator's chosen coordinate    |
+ * | exact       | automatic   | the stored coordinate                    |
+ * | approximate | automatic   | the generalised coordinate               |
+ * | suburb      | automatic   | the suburb reference coordinate          |
+ *
+ * A manual marker is a *public* coordinate. It is stored separately and read
+ * here only; the stored private coordinate is never written to, and this module
+ * remains the only place private location data is transformed.
+ */
 function resolvePublicCoordinate(record: PropertyRecord): Coordinate | null {
   const { privacy } = record;
 
@@ -194,8 +236,6 @@ function resolvePublicCoordinate(record: PropertyRecord): Coordinate | null {
     return null;
   }
 
-  // A manually placed marker wins, because an administrator chose it knowing
-  // what it reveals. The stored position is never modified.
   if (
     privacy.publicMarkerMode === "manual" &&
     isValidCoordinate(privacy.manualLatitude, privacy.manualLongitude)
@@ -246,8 +286,6 @@ export function resolvePublicLocation(
     visibility,
     publicLatitude: coordinate?.latitude,
     publicLongitude: coordinate?.longitude,
-    accuracyRadiusMeters:
-      visibility === "approximate" ? privacy.privacyRadiusMeters : undefined,
     markerMode: privacy.publicMarkerMode,
     address: formatPublicAddress(
       record.suburb,
@@ -256,9 +294,9 @@ export function resolvePublicLocation(
       privacy.addressVisibility,
     ),
     // Directions to a marker that does not exist are meaningless.
-    allowDirections: privacy.allowDirections && coordinate !== null,
+    allowDirections: resolveAllowDirections(privacy) && coordinate !== null,
     label: locationLabel(visibility),
-    accuracyNote: locationAccuracyNote(visibility, privacy.privacyRadiusMeters),
+    accuracyNote: locationAccuracyNote(visibility),
   };
 }
 
@@ -291,6 +329,12 @@ export function toPublicProperty(record: PropertyRecord): Property {
     completionLabel: record.completionLabel,
     priceDisplay: record.priceDisplay,
     isFeatured: record.isFeatured,
+    description: record.description,
+    visuals: record.visuals,
+    documents: record.documents,
+    testimonials: record.testimonials,
+    displayHome: record.displayHome,
+    currentStageId: record.currentStageId,
     location: resolvePublicLocation(record),
   };
 }
@@ -303,7 +347,11 @@ export function isMappable(property: Property): property is MappableProperty {
   );
 }
 
-/** Sensible starting point for a new property, and for the future admin form. */
+/**
+ * Sensible starting point for a new property, and for the future admin form.
+ * `allowDirections` is left unset so the per-visibility default applies until an
+ * administrator makes a deliberate choice.
+ */
 export const defaultPropertyPrivacy: PropertyPrivacySettings = {
   locationVisibility: "suburb",
   privacyRadiusMeters: 500,
@@ -314,5 +362,4 @@ export const defaultPropertyPrivacy: PropertyPrivacySettings = {
     suburb: true,
     postcode: true,
   },
-  allowDirections: false,
 };

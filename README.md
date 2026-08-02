@@ -67,13 +67,48 @@ CI runs `npm ci`, `npm run lint`, `npm run typecheck`, `npm test` and
 
 ## Routes
 
-| Route                | What it is                                                        |
-| -------------------- | ----------------------------------------------------------------- |
-| `/`                  | Marketing homepage                                                |
-| `/properties`        | The map and listing experience                                    |
-| `/properties/[slug]` | Temporary property page, replaced by the full detail page in Phase 4 |
+| Route                | What it is                                     |
+| -------------------- | ---------------------------------------------- |
+| `/`                  | Marketing homepage                             |
+| `/properties`        | The map and listing experience                 |
+| `/properties/[slug]` | Property page                                  |
 
-`lib/routes.ts` builds every internal path.
+`lib/routes.ts` builds every internal path. A property page can link back to the
+map with `?property=<slug>`, which opens that home's preview on arrival.
+
+## Property pages
+
+Server-rendered end to end, except the gallery, which only mounts once a home has
+more than one image. Every section is driven by the property's own data and a
+section with nothing to show renders nothing — no "coming soon" placeholders.
+
+| Section          | Appears when                                            |
+| ---------------- | ------------------------------------------------------- |
+| Hero             | always — status, address, summary, actions               |
+| Showcase         | always — photography, or the architectural drawing       |
+| Overview         | the record has a `description`                           |
+| Specifications   | always — measured figures only, nothing estimated        |
+| Build progress   | always — derived from the four documented build stages   |
+| Location         | always — published location and privacy statement        |
+| Tour, footage, downloads | the record has a tour, drone video or documents   |
+| Testimonials     | the record has testimonials                              |
+| Enquiry          | always                                                   |
+| More homes       | other properties exist                                   |
+
+The future-ready fields are already in the model, so each of these becomes
+available by adding data rather than by changing code:
+
+- **Virtual tours and drone video** — `visuals` entries with a `kind`, hosted in
+  Supabase Storage or linked externally.
+- **Brochures and floor plan PDFs** — `documents` entries; only those that
+  resolve to a file are rendered.
+- **Construction timeline** — derived from `currentStageId` against the published
+  process, so a home cannot claim a stage that does not exist.
+- **AI-generated descriptions** — `description.source: "ai-assisted"` renders a
+  disclosure line; nothing is passed off as human writing.
+- **Testimonials** — published only with a customer's permission, which is why the
+  demonstration data has none.
+- **Display homes** — `displayHome` adds a badge and an optional opening note.
 
 ## The property map
 
@@ -137,6 +172,43 @@ could undo. A small displacement derived from the *cell* is then applied so the
 result does not sit on an obvious grid; because it depends only on the cell, it
 adds no information about the home. The result is deterministic, so a marker
 never moves between page loads.
+
+**The radius is never published.** Public copy says the location "is
+approximate" and "has been generalised on purpose", and nothing more. Quoting a
+distance would invite a visitor to draw a circle and search inside it, and would
+state a guarantee that depends on which grid cell a home happens to fall in. The
+radius stays in the record; it does not appear in the public property object.
+
+### Marker resolution, in precedence order
+
+| Visibility  | Marker mode | Published marker                      |
+| ----------- | ----------- | ------------------------------------- |
+| `hidden`    | either      | none — hidden always wins              |
+| any other   | `manual`    | the administrator's chosen coordinate  |
+| `exact`     | `automatic` | the stored coordinate                  |
+| `approximate` | `automatic` | the generalised coordinate           |
+| `suburb`    | `automatic` | the suburb reference coordinate        |
+
+A manual marker is a separate pair of fields, read but never written. The stored
+private coordinate is never modified, and `lib/properties/privacy.ts` remains the
+only module that transforms private location data.
+
+### Directions policy
+
+Directions default to allowed for `exact` and off for everything else, because
+sending someone to a generalised marker either misleads them or narrows down the
+home. `hidden` never offers them. An administrator can override any property, and
+`lib/properties/privacy-validation.ts` flags an override that undermines the
+marker.
+
+### Configuration review
+
+`validatePropertyPrivacy()` returns structured warnings — code, severity, field
+and a message written for an administrator — for combinations that contradict each
+other: a street address published with a hidden marker, directions enabled for a
+generalised one, a manual marker with no position placed, a suburb with no
+reference. It never throws and never changes a setting; a deliberate choice is
+still applied. A test asserts the shipped data produces no warnings at all.
 
 ### Other per-property controls
 

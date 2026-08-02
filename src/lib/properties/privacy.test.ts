@@ -75,7 +75,7 @@ describe("locationVisibility: exact", () => {
     expect(location.publicLatitude).toBe(EXACT_LATITUDE);
     expect(location.publicLongitude).toBe(EXACT_LONGITUDE);
     expect(location.label).toBeNull();
-    expect(location.accuracyRadiusMeters).toBeUndefined();
+    expect(location.accuracyNote).toBeNull();
   });
 });
 
@@ -88,7 +88,10 @@ describe("locationVisibility: approximate", () => {
     expect(location.publicLatitude).not.toBe(EXACT_LATITUDE);
     expect(location.publicLongitude).not.toBe(EXACT_LONGITUDE);
     expect(location.label).toBe("Approximate location");
-    expect(location.accuracyRadiusMeters).toBe(500);
+    // The public wording must not quote a radius, which would both invite a
+    // search and state a guarantee.
+    expect(location.accuracyNote).not.toMatch(/\d/);
+    expect(location.accuracyNote).toContain("approximate");
   });
 
   it("stays within the configured radius", () => {
@@ -372,15 +375,29 @@ describe("address visibility", () => {
 });
 
 describe("directions visibility", () => {
-  it("is offered when allowed and there is a marker", () => {
+  it("is allowed by default for an exact location", () => {
     expect(
-      resolvePublicLocation(
-        record({ locationVisibility: "exact", allowDirections: true }),
-      ).allowDirections,
+      resolvePublicLocation(record({ locationVisibility: "exact" }))
+        .allowDirections,
     ).toBe(true);
   });
 
-  it("is withheld when the property forbids it", () => {
+  it("is off by default for generalised locations", () => {
+    for (const visibility of ["approximate", "suburb"] as const) {
+      expect(
+        resolvePublicLocation(record({ locationVisibility: visibility }))
+          .allowDirections,
+      ).toBe(false);
+    }
+  });
+
+  it("honours an administrator override in both directions", () => {
+    expect(
+      resolvePublicLocation(
+        record({ locationVisibility: "approximate", allowDirections: true }),
+      ).allowDirections,
+    ).toBe(true);
+
     expect(
       resolvePublicLocation(
         record({ locationVisibility: "exact", allowDirections: false }),
@@ -450,8 +467,20 @@ describe("toPublicProperty", () => {
       ),
     );
 
-    expect(serialised).not.toContain("privateLatitude");
-    expect(serialised).not.toContain("privacy");
+    // Field names, not the word "privacy" — the public copy legitimately uses
+    // that word when reassuring a visitor.
+    for (const field of [
+      "privateLatitude",
+      "privateLongitude",
+      "privacyRadiusMeters",
+      "locationVisibility",
+      "addressVisibility",
+      "publicMarkerMode",
+      "manualLatitude",
+    ]) {
+      expect(serialised).not.toContain(field);
+    }
+
     expect(serialised).not.toContain("Example Street");
     expect(serialised).not.toContain(String(EXACT_LATITUDE));
     expect(serialised).not.toContain(String(EXACT_LONGITUDE));

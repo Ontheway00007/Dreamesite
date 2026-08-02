@@ -38,10 +38,15 @@ function resultLabel(count: number): string {
  */
 export function PropertyExplorer({ properties }: PropertyExplorerProps) {
   const suburbs = useMemo(() => suburbOptions(properties), [properties]);
-  const { filters, view, setFilter, setView, reset } =
+  const { filters, view, initialPropertySlug, setFilter, setView, reset } =
     usePropertyFilters(suburbs);
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // A property page can link here with `?property=<slug>` to open that home.
+  const [selectedId, setSelectedId] = useState<string | null>(
+    () =>
+      properties.find((property) => property.slug === initialPropertySlug)?.id ??
+      null,
+  );
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
   const [resetToken, setResetToken] = useState(0);
 

@@ -71,6 +71,19 @@ export function isLocationVisibility(
   return locationVisibilityOptions.some((option) => option.value === value);
 }
 
+/**
+ * Directions defaults, per visibility. An administrator may override any of
+ * these per property; the value shown here is what applies when they have not.
+ */
+export const directionsDefaultByVisibility: Readonly<
+  Record<LocationVisibility, boolean>
+> = {
+  exact: true,
+  approximate: false,
+  suburb: false,
+  hidden: false,
+};
+
 export const publicMarkerModeOptions: ReadonlyArray<
   PrivacyOption<PublicMarkerMode>
 > = [

@@ -1,29 +1,39 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-import { ArrowLeft, ArrowRight, Navigation } from "lucide-react";
-
 import { Container } from "@/components/layout/container";
-import { PropertyMedia } from "@/components/property/property-media";
-import { PropertySpecs } from "@/components/property/property-specs";
-import { StatusBadge } from "@/components/property/status-badge";
+import { Reveal } from "@/components/motion/reveal";
+import { PropertyDetailHero } from "@/components/property/detail/property-detail-hero";
+import { PropertyDetailSpecs } from "@/components/property/detail/property-detail-specs";
+import { PropertyLocationSection } from "@/components/property/detail/property-location-section";
+import { PropertyProgress } from "@/components/property/detail/property-progress";
+import { PropertyResources } from "@/components/property/detail/property-resources";
+import { PropertyShowcase } from "@/components/property/detail/property-showcase";
+import { PropertyTestimonials } from "@/components/property/detail/property-testimonials";
+import { RelatedProperties } from "@/components/property/detail/related-properties";
 import { Button } from "@/components/ui/button";
-import { Heading, Text } from "@/components/ui/typography";
+import { Eyebrow, Heading, Text } from "@/components/ui/typography";
 import { propertyStatusTokens } from "@/lib/design/property-status";
 import {
   getPropertyBySlug,
   getPropertySlugs,
+  getRelatedProperties,
 } from "@/lib/properties/repository";
 import { ENQUIRY_ANCHOR, PROPERTIES_ROUTE } from "@/lib/routes";
 import { siteConfig } from "@/lib/site-config";
+import type { Property } from "@/types";
 
 /**
- * TEMPORARY PROPERTY PAGE.
+ * Property page.
  *
- * This exists so a card link never lands on an unstyled 404 while the full
- * detail page — gallery, floor plan, virtual tour, structured data — is built in
- * the next phase. It shows only what the current data can support, and is meant
- * to be replaced wholesale rather than extended.
+ * Entirely server-rendered except the gallery, which only mounts once a home has
+ * more than one image. Every section is driven by the property's own data, and a
+ * section with nothing to show renders nothing — so tours, drone footage,
+ * brochures, floor plans and testimonials all appear the moment they are added to
+ * a record, with no change here.
+ *
+ * Location comes only from `property.location`, the published shape produced by
+ * the privacy pipeline. This page never sees a stored coordinate.
  */
 
 interface PropertyPageProps {
@@ -47,12 +57,53 @@ export async function generateMetadata({
   }
 
   const status = propertyStatusTokens[property.status].label;
+  const description = `${property.summary} ${status} in ${property.suburb} ${property.state}.`;
 
   return {
     title: `${property.name}, ${property.suburb}`,
-    description: `${property.summary} ${status} in ${property.suburb} ${property.state}.`.trim(),
+    description,
     alternates: { canonical: `${PROPERTIES_ROUTE}/${property.slug}` },
+    openGraph: {
+      type: "website",
+      title: `${property.name}, ${property.suburb}`,
+      description,
+      url: `${PROPERTIES_ROUTE}/${property.slug}`,
+    },
   };
+}
+
+/** Section wrapper, so the rhythm of the page is defined in one place. */
+function DetailSection({
+  eyebrow,
+  title,
+  description,
+  children,
+}: {
+  eyebrow: string;
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="border-border border-t py-14 md:py-20">
+      <Reveal>
+        <Eyebrow>{eyebrow}</Eyebrow>
+        <Heading level={3} as="h2" className="mt-4">
+          {title}
+        </Heading>
+        {description ? (
+          <Text className="mt-4 max-w-2xl">{description}</Text>
+        ) : null}
+      </Reveal>
+      <div className="mt-10">{children}</div>
+    </section>
+  );
+}
+
+function progressDescription(property: Property): string {
+  return property.status === "under-construction"
+    ? "Where this home is in our four documented build stages."
+    : "This home has been through every stage of our build process.";
 }
 
 export default async function PropertyPage({ params }: PropertyPageProps) {
@@ -63,119 +114,95 @@ export default async function PropertyPage({ params }: PropertyPageProps) {
     notFound();
   }
 
-  const { address, label, accuracyNote, allowDirections } = property.location;
-  const details = [property.priceDisplay, property.completionLabel].filter(
-    Boolean,
-  );
-  const directionsHref = allowDirections
-    ? `https://www.google.com/maps/search/?api=1&query=${property.location.publicLatitude},${property.location.publicLongitude}`
-    : null;
+  const related = await getRelatedProperties(slug);
+  const hasTestimonials = (property.testimonials ?? []).length > 0;
 
   return (
-    <Container className="pt-(--header-height)" width="content">
-      <div className="py-16 md:py-24">
-        <Button href={PROPERTIES_ROUTE} variant="ghost" size="sm">
-          <ArrowLeft size={14} aria-hidden />
-          All homes
-        </Button>
-
-        <div className="border-border bg-background-alt relative mt-8 aspect-16/9 overflow-hidden rounded-xl border">
-          <PropertyMedia
-            property={property}
-            sizes="(min-width: 1024px) 60rem, 100vw"
-          />
-        </div>
-
-        <div className="mt-10">
-          <StatusBadge status={property.status} />
-          <Heading level={1} as="h1" className="mt-6">
-            {property.name}
-          </Heading>
-          <p className="text-foreground-subtle mt-3 text-sm tracking-[0.16em] uppercase">
-            {address ?? `${property.suburb} ${property.state}`}
-          </p>
-
-          <Text size="lead" className="mt-8">
-            {property.summary}
-          </Text>
-
-          <PropertySpecs
-            property={property}
-            includeHouseSize
-            className="border-border mt-8 border-t pt-8"
-          />
-
-          {details.length > 0 ? (
-            <Text size="small" className="mt-6">
-              {details.join(" · ")}
-            </Text>
-          ) : null}
-
-          {label || accuracyNote || directionsHref ? (
-            <div className="border-border mt-8 flex flex-wrap items-center gap-x-6 gap-y-3 border-t pt-6">
-              <div>
-                {label ? (
-                  <p className="text-foreground text-sm font-medium">{label}</p>
-                ) : null}
-                {accuracyNote ? (
-                  <Text size="small" tone="subtle" className="mt-1">
-                    {accuracyNote}
-                  </Text>
-                ) : null}
-              </div>
-
-              {/* Only offered when the property's settings allow directions. */}
-              {directionsHref ? (
-                <a
-                  href={directionsHref}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-accent hover:text-accent-strong ml-auto inline-flex items-center gap-2 text-xs font-medium tracking-[0.16em] uppercase transition-colors duration-(--duration-fast)"
-                >
-                  <Navigation size={14} aria-hidden />
-                  Open in Maps
-                </a>
-              ) : null}
-            </div>
-          ) : null}
-
-          <div className="border-border mt-12 border-t pt-8">
-            <Text size="small">
-              The full profile for this home — floor plan, gallery and virtual
-              tour — is being prepared. In the meantime our team can answer
-              anything about it directly.
-            </Text>
-
-            <div className="mt-8 flex flex-wrap gap-4">
-              <Button
-                href={`mailto:${siteConfig.contact.email}?subject=${encodeURIComponent(
-                  `${property.name}, ${property.suburb}`,
-                )}`}
-                variant="accent"
-                size="lg"
-              >
-                Enquire about this home
-              </Button>
-              <Button
-                href={PROPERTIES_ROUTE}
-                variant="outline"
-                size="lg"
-                iconRight={<ArrowRight size={16} aria-hidden />}
-              >
-                Back to the map
-              </Button>
-            </div>
-
-            <Text size="small" tone="subtle" className="mt-6">
-              Prefer to talk it through?{" "}
-              <a href={ENQUIRY_ANCHOR} className="text-accent underline">
-                Send us the suburb and timeframe
-              </a>{" "}
-              you are considering.
-            </Text>
-          </div>
-        </div>
+    <Container width="content" className="pt-(--header-height)">
+      <div className="py-12 md:py-16">
+        <PropertyDetailHero property={property} />
       </div>
+
+      <PropertyShowcase property={property} />
+
+      {property.description ? (
+        <DetailSection eyebrow="Overview" title="About this home">
+          <div className="max-w-2xl space-y-5">
+            {property.description.paragraphs.map((paragraph, index) => (
+              <Text key={index}>{paragraph}</Text>
+            ))}
+            {property.description.source === "ai-assisted" ? (
+              <Text size="small" tone="subtle">
+                This description was drafted with AI assistance and reviewed by
+                our team.
+              </Text>
+            ) : null}
+          </div>
+        </DetailSection>
+      ) : null}
+
+      <DetailSection
+        eyebrow="Specifications"
+        title="The measured detail."
+        description="Figures come from the plan for this home. Anything not yet measured is left out rather than estimated."
+      >
+        <PropertyDetailSpecs property={property} />
+      </DetailSection>
+
+      <DetailSection
+        eyebrow="Build progress"
+        title="Every stage, on the record."
+        description={progressDescription(property)}
+      >
+        <PropertyProgress property={property} />
+      </DetailSection>
+
+      <DetailSection
+        eyebrow="Location"
+        title="Where this home sits."
+        description="We publish location detail only as far as the owner of each home has agreed."
+      >
+        <PropertyLocationSection property={property} />
+      </DetailSection>
+
+      {/* Renders only when this home has a tour, footage or documents. */}
+      <PropertyResources property={property} />
+
+      {hasTestimonials ? (
+        <DetailSection eyebrow="In their words" title="From the owners.">
+          <PropertyTestimonials property={property} />
+        </DetailSection>
+      ) : null}
+
+      <DetailSection
+        eyebrow="Enquire"
+        title="Ask us anything about this home."
+        description="Send through your questions and timeframe, and our team will reply with the detail you need — including location and availability."
+      >
+        <div className="flex flex-wrap gap-4">
+          <Button
+            href={`mailto:${siteConfig.contact.email}?subject=${encodeURIComponent(
+              `${property.name}, ${property.suburb}`,
+            )}`}
+            variant="accent"
+            size="lg"
+          >
+            Email our team
+          </Button>
+          <Button href={ENQUIRY_ANCHOR} variant="ghost" size="lg">
+            Other ways to reach us
+          </Button>
+        </div>
+      </DetailSection>
+
+      {related.length > 0 ? (
+        <DetailSection
+          eyebrow="More homes"
+          title={`Others in ${property.suburb} and nearby.`}
+        >
+          <RelatedProperties properties={related} />
+        </DetailSection>
+      ) : null}
     </Container>
   );
 }

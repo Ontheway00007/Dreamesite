@@ -1,10 +1,10 @@
 /**
- * Image resolution for property media.
+ * Media resolution for property assets.
  *
- * Photography will live in a public Supabase Storage bucket. A property record
- * stores only the path inside that bucket, so nothing in the UI has to know
- * where the files are hosted. Until a property has a path — or until Supabase is
- * configured — the card falls back to the architectural placeholder.
+ * Photography, videos, brochures and floor plans all live in one public Supabase
+ * Storage bucket. A property record stores only the path inside that bucket, so
+ * nothing in the UI has to know where files are hosted, and swapping the host is
+ * a change to this module alone.
  */
 
 /** Public Supabase Storage bucket that holds property media. */
@@ -15,10 +15,11 @@ function stripTrailingSlash(value: string): string {
 }
 
 /**
- * Builds the public URL for a stored image, or returns null when there is
- * nothing to show yet.
+ * Builds the public URL for a stored asset, or returns null when there is
+ * nothing to link to yet — either the property has no asset, or Supabase is not
+ * configured.
  */
-export function propertyImageUrl(path: string | undefined): string | null {
+export function propertyMediaUrl(path: string | undefined): string | null {
   if (!path) {
     return null;
   }

@@ -1,7 +1,7 @@
 import Image from "next/image";
 
 import { ArchitecturalFrame } from "@/components/media/architectural-frame";
-import { propertyImageUrl } from "@/lib/images/property-image";
+import { propertyMediaUrl } from "@/lib/images/property-image";
 import { cn } from "@/lib/utils/cn";
 import type { Property } from "@/types";
 
@@ -30,7 +30,7 @@ export function PropertyMedia({
   labelClassName,
   className,
 }: PropertyMediaProps) {
-  const imageUrl = propertyImageUrl(property.imagePath);
+  const imageUrl = propertyMediaUrl(property.imagePath);
 
   if (imageUrl) {
     return (

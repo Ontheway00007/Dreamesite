@@ -47,3 +47,29 @@ export async function getPropertyBySlug(
 export async function getPropertySlugs(): Promise<string[]> {
   return propertyRecords.map((record) => record.slug);
 }
+
+/**
+ * Other homes to show on a property page: same suburb first, then anything else,
+ * so a page never ends without somewhere to go next.
+ */
+export async function getRelatedProperties(
+  slug: string,
+  limit = 3,
+): Promise<Property[]> {
+  const all = publishedProperties();
+  const current = all.find((property) => property.slug === slug);
+
+  if (!current) {
+    return all.slice(0, limit);
+  }
+
+  const others = all.filter((property) => property.slug !== slug);
+  const sameSuburb = others.filter(
+    (property) => property.suburb === current.suburb,
+  );
+  const elsewhere = others.filter(
+    (property) => property.suburb !== current.suburb,
+  );
+
+  return [...sameSuburb, ...elsewhere].slice(0, limit);
+}

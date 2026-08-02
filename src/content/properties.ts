@@ -43,13 +43,13 @@ export const propertyRecords: readonly PropertyRecord[] = [
     placeholderVariant: "single-storey",
     priceDisplay: "Price on application",
     isFeatured: true,
+    displayHome: { isDisplayHome: true },
     privateLatitude: -37.5312,
     privateLongitude: 144.8861,
     address: { postcode: "3064" },
     privacy: {
       ...defaultPropertyPrivacy,
       locationVisibility: "exact",
-      allowDirections: true,
     },
   },
   {
@@ -70,6 +70,7 @@ export const propertyRecords: readonly PropertyRecord[] = [
     completionLabel: "Completion window to be confirmed",
     priceDisplay: "Price on application",
     isFeatured: true,
+    currentStageId: "construction",
     privateLatitude: -37.5974,
     privateLongitude: 144.9412,
     address: { postcode: "3064" },
@@ -77,7 +78,6 @@ export const propertyRecords: readonly PropertyRecord[] = [
       ...defaultPropertyPrivacy,
       locationVisibility: "approximate",
       privacyRadiusMeters: 500,
-      allowDirections: true,
     },
   },
   {
@@ -154,7 +154,6 @@ export const propertyRecords: readonly PropertyRecord[] = [
       ...defaultPropertyPrivacy,
       locationVisibility: "approximate",
       privacyRadiusMeters: 250,
-      allowDirections: true,
     },
   },
   {
@@ -175,6 +174,7 @@ export const propertyRecords: readonly PropertyRecord[] = [
     completionLabel: "Completion window to be confirmed",
     priceDisplay: "Price on application",
     isFeatured: false,
+    currentStageId: "documentation",
     privateLatitude: -37.5008,
     privateLongitude: 144.9601,
     address: { postcode: "3064" },
@@ -187,7 +187,6 @@ export const propertyRecords: readonly PropertyRecord[] = [
       publicMarkerMode: "manual",
       manualLatitude: -37.4995,
       manualLongitude: 144.9563,
-      allowDirections: true,
     },
   },
   {
@@ -207,6 +206,7 @@ export const propertyRecords: readonly PropertyRecord[] = [
     placeholderVariant: "double-storey",
     completionLabel: "Completion window to be confirmed",
     isFeatured: false,
+    currentStageId: "handover",
     privateLatitude: -37.5906,
     privateLongitude: 144.9487,
     address: { postcode: "3064" },

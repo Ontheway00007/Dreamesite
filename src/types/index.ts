@@ -60,15 +60,22 @@ export interface AddressVisibility {
 /** Per-property privacy settings. The future admin dashboard edits exactly this. */
 export interface PropertyPrivacySettings {
   readonly locationVisibility: LocationVisibility;
-  /** Applies when `locationVisibility` is `approximate`. */
+  /** Applies when `locationVisibility` is `approximate`. Never published. */
   readonly privacyRadiusMeters: PrivacyRadiusMeters;
   readonly publicMarkerMode: PublicMarkerMode;
-  /** Marker chosen by an administrator. Used when the mode is `manual`. */
+  /**
+   * Public marker chosen by an administrator, used when the mode is `manual`.
+   * A separate pair of fields on purpose: publishing a hand-placed marker must
+   * never overwrite the stored private position.
+   */
   readonly manualLatitude?: number;
   readonly manualLongitude?: number;
   readonly addressVisibility: AddressVisibility;
-  /** Whether "Open in Maps" and directions actions may be offered. */
-  readonly allowDirections: boolean;
+  /**
+   * Whether directions may be offered. Left unset, the default for the chosen
+   * visibility applies: allowed for `exact`, off for everything else.
+   */
+  readonly allowDirections?: boolean;
   /**
    * Suburb whose reference position is used when visibility is `suburb`.
    * Defaults to the property's own suburb.
@@ -81,6 +88,70 @@ export interface PropertyAddressRecord {
   readonly houseNumber?: string;
   readonly street?: string;
   readonly postcode: string;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Property content                                                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A visual attached to a property.
+ *
+ * One shape covers photography, drone footage, a virtual tour and a floor plan
+ * image, so adding any of them later is a data change rather than a new section
+ * type. `path` points inside the Supabase Storage bucket; `externalUrl` is for
+ * media hosted elsewhere, such as a tour provider.
+ */
+export type PropertyVisualKind =
+  | "photo"
+  | "drone-video"
+  | "virtual-tour"
+  | "floorplan";
+
+export interface PropertyVisual {
+  readonly id: string;
+  readonly kind: PropertyVisualKind;
+  readonly path?: string;
+  readonly externalUrl?: string;
+  readonly caption?: string;
+  /** Poster image for a video or tour, as a storage path. */
+  readonly posterPath?: string;
+}
+
+/** A downloadable document: brochure, floor plan PDF, specification sheet. */
+export interface PropertyDocument {
+  readonly id: string;
+  readonly kind: "brochure" | "floorplan" | "specification";
+  readonly label: string;
+  /** Path inside the Supabase Storage bucket. */
+  readonly path: string;
+  readonly fileSizeLabel?: string;
+}
+
+/** A customer quote. Only ever published with the customer's permission. */
+export interface PropertyTestimonial {
+  readonly id: string;
+  readonly quote: string;
+  /** How the customer agreed to be credited, e.g. "M. and J., Craigieburn". */
+  readonly attribution: string;
+  readonly year?: string;
+}
+
+/** Long-form description, and where it came from. */
+export interface PropertyDescription {
+  readonly paragraphs: readonly string[];
+  /**
+   * `ai-assisted` copy is disclosed on the page. Nothing is published as human
+   * writing when it is not.
+   */
+  readonly source: "written" | "ai-assisted";
+}
+
+/** Display home details, when a property is open to visit. */
+export interface DisplayHomeDetails {
+  readonly isDisplayHome: boolean;
+  /** Opening arrangement, only once confirmed by the business. */
+  readonly openingNote?: string;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -117,6 +188,24 @@ export interface PropertyBase {
   /** Display-ready price string. Only set when the business has confirmed it. */
   readonly priceDisplay?: string;
   readonly isFeatured: boolean;
+
+  /* --- Detail page content. Every field is optional: a section that has no
+     data is not rendered, so nothing has to be invented to fill the page. --- */
+
+  /** Long-form description shown above the specifications. */
+  readonly description?: PropertyDescription;
+  /** Photography, drone footage, tours and floor plan images. */
+  readonly visuals?: readonly PropertyVisual[];
+  /** Brochures and floor plan documents. */
+  readonly documents?: readonly PropertyDocument[];
+  readonly testimonials?: readonly PropertyTestimonial[];
+  readonly displayHome?: DisplayHomeDetails;
+  /**
+   * The build stage currently under way, matching an id in `content/process.ts`.
+   * Only meaningful while a home is under construction; the progress timeline is
+   * derived from it rather than stored stage by stage.
+   */
+  readonly currentStageId?: string;
 }
 
 /**
@@ -142,8 +231,6 @@ export interface PublicPropertyLocation {
   readonly visibility: LocationVisibility;
   readonly publicLatitude?: number;
   readonly publicLongitude?: number;
-  /** How far the marker may be from the home, when that is meaningful. */
-  readonly accuracyRadiusMeters?: number;
   readonly markerMode: PublicMarkerMode;
   /** Formatted address, or null when no address may be shown. */
   readonly address: string | null;
