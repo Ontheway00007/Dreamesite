@@ -1,6 +1,7 @@
 import { CtaSection } from "@/components/sections/cta-section";
 import { FeaturedProperties } from "@/components/sections/featured-properties";
 import { Hero } from "@/components/sections/hero";
+import { MapPreviewSection } from "@/components/sections/map-preview-section";
 import { ProcessSection } from "@/components/sections/process-section";
 import { ServiceAreasSection } from "@/components/sections/service-areas-section";
 import { StatisticsSection } from "@/components/sections/statistics-section";
@@ -19,6 +20,7 @@ export default function HomePage() {
       />
 
       <FeaturedProperties />
+      <MapPreviewSection />
       <StatusSection />
       <ProcessSection />
       <StatisticsSection />

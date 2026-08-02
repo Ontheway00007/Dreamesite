@@ -23,7 +23,7 @@ export const siteConfig = {
 } as const;
 
 export const primaryNav: readonly NavLink[] = [
-  { label: "Homes", href: "/#homes" },
+  { label: "Homes", href: "/properties" },
   { label: "Process", href: "/#process" },
   { label: "Locations", href: "/#locations" },
   { label: "Contact", href: "/#contact" },

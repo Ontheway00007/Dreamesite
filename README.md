@@ -43,6 +43,7 @@ deployments.
 | `NEXT_PUBLIC_SUPABASE_URL`        | for data     | Supabase → Project Settings → Data API → Project URL     |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY`   | for data     | Supabase → Project Settings → API Keys → anon / public   |
 | `NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN` | for the map  | account.mapbox.com → Tokens → public token (`pk.…`)      |
+| `NEXT_PUBLIC_MAPBOX_STYLE`        | optional     | A Mapbox Studio style URL. Defaults to `mapbox://styles/mapbox/dark-v11` |
 | `NEXT_PUBLIC_SITE_URL`            | recommended  | Your canonical origin, e.g. `https://dreame.com.au`      |
 
 The anon key is designed to be public, so keep row level security enabled on
@@ -57,27 +58,102 @@ npm run start      # serve the production build
 npm run lint       # ESLint
 npm run lint:fix   # ESLint with autofix
 npm run typecheck  # tsc --noEmit
+npm test           # Vitest, run once
 ```
+
+CI runs `npm ci`, `npm run lint`, `npm run typecheck`, `npm test` and
+`npm run build` on every push and pull request. See
+`.github/workflows/ci.yml`. The build needs no secrets.
+
+## Routes
+
+| Route                | What it is                                                        |
+| -------------------- | ----------------------------------------------------------------- |
+| `/`                  | Marketing homepage                                                |
+| `/properties`        | The map and listing experience                                    |
+| `/properties/[slug]` | Temporary property page, replaced by the full detail page in Phase 4 |
+
+`lib/routes.ts` builds every internal path.
+
+## The property map
+
+`/properties` is a Server Component that loads properties and renders the page
+shell plus a full server-rendered listing. The interactive explorer hydrates on
+top of it.
+
+- **One filtering pipeline.** `lib/properties/filters.ts` is pure and is called
+  once in `PropertyExplorer`. The list, the result count and the map all read
+  that single result, so they cannot disagree. The selected property is derived
+  from the filtered list, which means filtering something out deselects it
+  automatically.
+- **Clustering through Mapbox, not React.** One clustered GeoJSON source drives
+  the cluster circles, counts, markers and the hover and selected rings. Hover
+  and selection are layer filters on the promoted feature id, so they never
+  trigger a React render. Adding hundreds of properties adds no components.
+- **Marker shapes, not just colours.** Each status has its own silhouette —
+  circle, triangle, diamond, ring — drawn on a canvas at runtime using the same
+  CSS variables as the rest of the UI. A legend on the map decodes them.
+- **Dynamic import.** Mapbox GL and its stylesheet load only when the map
+  renders, and never on the server. The homepage ships none of it: its map
+  section is a schematic with a link, not a live map.
+- **URL state.** `status`, `suburb` and `beds` plus `view` live in the query
+  string, so a filtered view can be shared. Values are validated on read.
+- **Camera policy.** Fit to results on load and whenever the result set changes;
+  ease to a selected property only when its pin is not already usable where it
+  is; zoom to the expansion level on a cluster click; never move the camera while
+  someone is simply reading. Durations drop to zero under reduced motion.
+- **No token, no crash.** `getMapboxToken()` returns null instead of throwing,
+  and the page renders a polished "map unavailable" panel beside a fully working
+  list. Environment hints appear only in development.
+
+## Property data and location privacy
+
+`lib/properties/repository.ts` is the only way to read properties. It is already
+asynchronous so Supabase can replace the local file in
+`content/properties.ts` without touching a single component.
+
+Every record passes through `lib/properties/privacy.ts` on the way out, which is
+what makes the privacy rules enforceable rather than aspirational:
+
+| Precision     | Published position                                  |
+| ------------- | --------------------------------------------------- |
+| `exact`       | Passed through — only for homes on the market        |
+| `approximate` | Rounded to ~110 m, enough for the right neighbourhood |
+| `private`     | No coordinates at all; the home stays in the list    |
+
+Sold and completed homes are forced down to `approximate` even if the record
+says `exact`, because they are someone's residence. Unusable coordinates are
+dropped rather than published as a broken pin. The UI labels any reduced pin as
+"Approximate location" so it never implies street-level accuracy.
+
+The demonstration data is fictional: plan-type names, no street addresses, no
+invented prices or dates, and general coordinates chosen so no pin lands on a
+real private residence. It must be replaced before launch.
 
 ## Project structure
 
 ```
 src/
-  app/                     Routes, root layout, global stylesheet
+  app/
+    properties/            Map and listing route, plus the temporary detail route
   components/
     layout/                Container, Section, SiteHeader, SiteFooter
+    map/                   PropertyMap (dynamic), loader, fallback, legend
     media/                 ArchitecturalFrame line drawings (image placeholders)
     motion/                Reveal / RevealGroup (Framer), AnimatedText (CSS), Parallax (GSAP)
-    property/              PropertyCard, StatusBadge
+    property/              Card, list, filters, preview, sheets, explorer
     sections/              One file per homepage section
     ui/                    Button, SectionHeading, Statistic, Timeline, typography
-  content/                 Editable page content, separate from components
+  content/                 Editable content: properties, process, statistics
   hooks/
     use-gsap.ts            Scoped, auto-reverting GSAP contexts
+    use-property-filters.ts  Filter and view state, synced to the URL
   lib/
     animation/             Shared easings, durations, Framer variants, GSAP setup
     design/                Property status presentation tokens
     images/                Supabase Storage URL resolution for property media
+    map/                   Map config, GeoJSON building, marker artwork
+    properties/            Repository, filters, location privacy (+ tests)
     supabase/              Browser and server Supabase clients
     env.ts                 Typed, validated environment access
     routes.ts              Internal path construction
@@ -89,6 +165,14 @@ src/
   types/                   Shared domain types
 ```
 
+## Tests
+
+`npm test` covers the pure logic the map and listing depend on: filtering and
+URL round-tripping, GeoJSON generation, the location-privacy transform and slug
+lookup. Tests live beside the code as `*.test.ts`. There is no component or
+browser test setup — that would be a much heavier commitment than the current
+surface justifies.
+
 Every component takes typed props and no component reaches into global state.
 Sections compose primitives; primitives never know which section they are in.
 
@@ -99,12 +183,13 @@ edited without touching components. Nothing unverified is published: the site
 shows no figures for homes delivered, years operating, projects or satisfaction,
 and no claims about awards, ratings or registrations.
 
-Two things still need the business to confirm them:
+Three things still need the business to confirm them:
 
 | Where                    | What needs to happen                                                                                                                                    |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `site-config.ts`         | The email address and phone number are placeholders, and they are the only contact points on the site. Confirm both before launch.                        |
-| `featured-properties.ts` | Three concept façades, presented as concepts in the section copy, so the card design could be reviewed. Replace with real records when the schema exists. |
+| `content/properties.ts`  | Ten fictional concept façades with demonstration coordinates, so the map and cards could be built. Replace with real records, and review each `locationPrecision`, before launch. |
+| `/properties/[slug]`     | A deliberately minimal placeholder page so card links never 404. Phase 4 replaces it with the full detail page.                                                                 |
 
 The statistics section only publishes figures derived from data in this
 repository — the number of core suburbs, statuses and build stages — so it cannot
