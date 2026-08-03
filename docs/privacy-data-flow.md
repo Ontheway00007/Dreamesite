@@ -54,12 +54,17 @@ The tests prove specific guarantees the schema alone cannot:
 
 The public locations are deliberately computed, not stored by hand.
 
-```bash
-# regenerate against a connected project:
-npm run db:generate-public-locations
-```
+The regeneration routine lives in `src/lib/properties/projection.ts`. It:
 
-That script reads `property_private_locations` + `property_location_settings`
-server-side, applies the same privacy math against the shared TS module, and
-writes fresh rows to `property_public_locations`. Seed data was produced the
-same way; the file comments state that explicitly.
+1. Reads `property_private_locations`, `property_location_settings` and
+   `suburb_references` through the service role.
+2. Maps them onto the `PropertyRecord` shape using the *same* definitions the
+   privacy validator and admin form will share.
+3. Runs `toPublicProperty` — the exact pipeline the app uses — to get the
+   published location for that property.
+4. Upserts the row into `property_public_locations`.
+
+It never runs in the browser, never sees the anon key, and never appears in
+the client bundle. When the Phase 7 privacy settings mutation lands, the
+admin's save handler calls this function so the public read path stays the
+final, computed row instead of recalculating per request.

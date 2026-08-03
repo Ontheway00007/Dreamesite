@@ -22,6 +22,11 @@ export async function getLocalProperties(): Promise<Property[]> {
   return publishedProperties();
 }
 
+/** Homepage subset: featured properties only. */
+export async function getLocalFeaturedProperties(): Promise<Property[]> {
+  return publishedProperties().filter((property) => property.isFeatured);
+}
+
 /** A single property, or null when the slug does not exist. */
 export async function getLocalPropertyBySlug(
   slug: string,
@@ -38,6 +43,7 @@ export async function getLocalPropertySlugs(): Promise<string[]> {
 
 export const localSource: PropertySource = {
   getProperties: getLocalProperties,
+  getFeaturedProperties: getLocalFeaturedProperties,
   getPropertyBySlug: getLocalPropertyBySlug,
   getPropertySlugs: getLocalPropertySlugs,
 };

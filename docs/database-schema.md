@@ -60,6 +60,11 @@ coordinates (must be set together), `suburb_reference`,
 
 RLS: enabled, no policies in Phase 5. Admin Phase 6 reads/writes here.
 
+CHECK constraints (added in `0005`) forbid three combinations outright —
+approximate without a radius, manual mode without a manually placed position,
+and a `hidden` row that still holds a public coordinate or directions. The
+generator cannot write them even with a bug.
+
 ### `property_public_locations` — the generated public projection
 
 `property_id` PK/FK. `location_visibility`, published coordinate,
@@ -97,17 +102,22 @@ this schema doesn't grow a separate table per kind.
 ### `property_features`
 
 Free `category / label / value` rows with `sort_order`, `is_published`,
-`on delete cascade`. Holds inclusions/materials/specs beyond the fixed columns
-— the detail specs table on the site currently shows the core columns, so
-this table is future-facing.
+`on delete cascade`. **Deferred from the public read path in this phase:** the
+detail specs table already renders fixed columns, and no consumer surfaced
+yet for them. The rows stay in the schema so a future "inclusions" section on
+a property page can be a data change, not a migration.
 
 ### `construction_updates`
 
 `stage`, `title`, `description`, `status` (`planned | in-progress |
 complete`), `progress_value` (0–100), `occurred_at`, `sort_order`,
-`is_published`. These are editorial entries for an individual build's diary;
-the public timeline stays derived from `current_stage_id` on the parent row
-plus the shared `processStages` content, so both stay in sync.
+`is_published`. **Deferred from the public read path in this phase.** The
+homepage's `processStages` content models the shared build process, and
+`current_stage_id` on `properties` drives the per-home timeline; these
+editorial entries are the future build-diary an admin will write per home.
+Because nothing outside an admin context will read them initially, they stay
+behind the same `is_published` + parent-published gating as every other
+public child row.
 
 ### `property_resources`
 

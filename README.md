@@ -96,6 +96,22 @@ denied: only `SELECT` policies exist for `anon`/`authenticated` until admin
 uploads arrive in Phase 6. Architectural placeholders are not moved into the
 bucket — they remain drawn locally.
 
+## Caching
+
+The three catalogue routes — `/`, `/properties` and `/properties/[slug]` —
+are statically generated with a five-minute revalidation
+(`revalidate = 300`). This means:
+
+- Every response serves from the Next.js Data Cache until it expires; the
+  Supabase reads behind them do not run per request.
+- A lot of editing activity in a five-minute window refreshes at most one
+  request per route, so the database is shielded from browse traffic spikes.
+- Admin edits become visible no more than five minutes after they save, and
+  no webhook is needed for the current traffic level. When richer tag-based
+  invalidation is warranted, `revalidatePath("/properties")` /
+  `revalidatePath("/properties/[slug]")` from a future Supabase webhook
+  replaces the time-based rule.
+
 ## Scripts
 
 ```bash

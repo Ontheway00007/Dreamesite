@@ -74,14 +74,23 @@ export const env = {
   /**
    * True when both Supabase values are present — the repositories switch on
    * this rather than letting a partial configuration hard-fail a page load.
-   * A missing value is only an error for code paths that have deliberately
-   * chosen the Supabase backend.
    */
   get isSupabaseConfigured(): boolean {
     return Boolean(
       process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() &&
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim(),
     );
+  },
+
+  /**
+   * True only for a real production deployment — never for local dev, CI or
+   * preview builds. Production detection comes from `VERCEL_ENV`: in Next.js,
+   * `NODE_ENV` is a compile-time constant the build bakes in, so it cannot be
+   * toggled by runtime decisions. Repositories use this to decide whether a
+   * missing Supabase configuration is acceptable (fixtures) or not (empty).
+   */
+  get isProductionDeployment(): boolean {
+    return process.env.VERCEL_ENV === "production";
   },
 
   /** Mapbox public access token (pk.*). */

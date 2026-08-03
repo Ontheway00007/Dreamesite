@@ -1,3 +1,4 @@
+import { env } from "@/lib/env";
 import { propertyStatusOrder } from "@/lib/design/property-status";
 import { localSource } from "@/lib/properties/local-repository";
 import {
@@ -11,35 +12,57 @@ import type { PropertySource } from "@/lib/properties/source";
 /**
  * Data access boundary for properties.
  *
- * Two sources implement the same contract, and this module dispatches between
- * them:
+ * Three sources implement the same public contract:
  *
  * - **Local fixtures** — the committed demonstration data. Used for unit
- *   tests, CI, and development before a Supabase project is connected.
+ *   tests, CI and development before a Supabase project is wired up.
  * - **Supabase** — the real catalogue, whenever both public env values are
- *   present. Reads go through the anon key + RLS, so the browser-facing
- *   surface cannot touch a private table no matter what this code does wrong.
- *
- * Every consumer goes through these functions, and they all return published
- * properties — coordinates already reduced by the privacy rules or, with
- * Supabase, read straight out of the pre-computed
- * `property_public_locations` projection. When the private data changes, only
- * the projection regeneration script runs again.
+ *   present. Reads go through the anon key plus RLS, so this file never
+ *   needs to know what is safe — the database enforces it.
+ * - **Empty** — chosen when Supabase is expected but unavailable in a
+ *   production deployment, so a misconfigured launch never silently shows
+ *   fictional homes. The empty catalogue already has a polished UI.
  */
 
-function activeSource(): PropertySource {
-  return isSupabaseSourceAvailable() ? supabaseSource : localSource;
+type SourceChoice = "supabase" | "local" | "empty";
+
+function chooseSource(): SourceChoice {
+  if (isSupabaseSourceAvailable()) {
+    return "supabase";
+  }
+
+  // Fictional data is helpful while developing, but a real deploy must never
+  // pass it off as listings. Preview and test environments stay on fixtures.
+  if (env.isProductionDeployment) {
+    return "empty";
+  }
+
+  return "local";
+}
+
+function activeSource(): PropertySource | null {
+  const choice = chooseSource();
+
+  return choice === "empty" ? null : choice === "supabase" ? supabaseSource : localSource;
 }
 
 /**
- * Which source the app is currently reading. Exposed for tests and for any
- * future "demo data" badge on internal tooling.
+ * Exposed for the richer state API in `catalogue.ts`. Never call this from a
+ * component — go through the repository functions or `getCatalogue`.
  */
-export function getActivePropertySourceName(): "supabase" | "local" {
-  return isSupabaseSourceAvailable() ? "supabase" : "local";
+export function activePropertySource(): PropertySource | null {
+  return activeSource();
 }
 
-/** Statuses first in showcase order, then newest, then alphabetically. */
+/**
+ * Which source the app is currently reading. Exposed for tests and any
+ * future "demo data" badge on internal tooling.
+ */
+export function getActivePropertySourceName(): SourceChoice {
+  return chooseSource();
+}
+
+/** Statuses first in showcase order, then alphabetically by name. */
 function compareProperties(a: Property, b: Property): number {
   const statusDelta =
     propertyStatusOrder.indexOf(a.status) - propertyStatusOrder.indexOf(b.status);
@@ -47,49 +70,75 @@ function compareProperties(a: Property, b: Property): number {
   return statusDelta !== 0 ? statusDelta : a.name.localeCompare(b.name);
 }
 
-function sortedProperties(source: PropertySource): Promise<Property[]> {
-  return source.getProperties().then((properties) =>
-    [...properties].sort(compareProperties),
-  );
+async function propertiesFrom(choice: PropertySource | null): Promise<Property[]> {
+  if (choice === null) {
+    return [];
+  }
+
+  return choice.getProperties();
 }
 
-/** Every property that may be shown publicly. */
-export async function getProperties(): Promise<Property[]> {
-  return sortedProperties(activeSource());
-}
-
-/** The subset promoted on the homepage. */
+/**
+ * The homepage subset. The source applies its own ordering — display priority
+ * first when Supabase is active (that is the administrator's intent), or the
+ * catalog order defined by the fixtures otherwise.
+ */
 export async function getFeaturedProperties(): Promise<Property[]> {
-  return (await sortedProperties(activeSource())).filter(
-    (property) => property.isFeatured,
-  );
+  const source = activeSource();
+
+  if (source === null) {
+    return [];
+  }
+
+  return source.getFeaturedProperties();
+}
+
+/** The full published catalogue, in catalog order. */
+export async function getProperties(): Promise<Property[]> {
+  return (await propertiesFrom(activeSource())).sort(compareProperties);
 }
 
 /** A single property, or null when the slug does not exist. */
 export async function getPropertyBySlug(
   slug: string,
 ): Promise<Property | null> {
-  return activeSource().getPropertyBySlug(slug);
+  const source = activeSource();
+
+  if (source === null) {
+    return null;
+  }
+
+  return source.getPropertyBySlug(slug);
 }
 
 /** Slugs for static generation of property routes. */
 export async function getPropertySlugs(): Promise<string[]> {
-  return activeSource().getPropertySlugs();
+  const source = activeSource();
+
+  if (source === null) {
+    return [];
+  }
+
+  return source.getPropertySlugs();
 }
 
 /**
  * Other homes to show on a property page: same suburb first, then anything
- * else, so a page never ends without somewhere to go next.
+ * else. The current home is always excluded.
  */
 export async function getRelatedProperties(
   slug: string,
   limit = 3,
 ): Promise<Property[]> {
+  if (!slug) {
+    return [];
+  }
+
   if (isSupabaseSourceAvailable()) {
     return getSupabaseRelated(slug, limit);
   }
 
-  const all = await sortedProperties(activeSource());
+  const all = await getProperties();
   const current = all.find((property) => property.slug === slug);
 
   if (!current) {
@@ -113,16 +162,18 @@ export interface DescriptionBlock {
 }
 
 /**
- * Normalises a stored description into keyed render blocks.
+ * Normalises a description into keyed render blocks.
  *
- * `PropertyDescription.paragraphs` stores plain strings so existing local
- * content stays unchanged, but this shape detaches the UI from array indexes:
- * the render consumes `(key, text)` pairs rather than `(paragraph, index)`.
- * When CMS-managed paragraphs move to `PropertyParagraph` entries with `id`,
- * only this function changes — the JSX and the keys stay stable.
+ * Local fixtures store plain strings; the Supabase path stores
+ * `PropertyParagraph[]` blocks with stable IDs. Both normalise to the same
+ * render shape — `id` when it exists, the paragraph text otherwise — so
+ * React keys never depend on array index.
  */
 export function descriptionBlocks(
   description: PropertyDescription,
 ): readonly DescriptionBlock[] {
-  return description.paragraphs.map((text) => ({ key: text, text }));
+  return description.paragraphs.map((paragraph) => ({
+    key: paragraph.id,
+    text: paragraph.text,
+  }));
 }

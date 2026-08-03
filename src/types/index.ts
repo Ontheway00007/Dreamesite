@@ -138,20 +138,22 @@ export interface PropertyTestimonial {
 }
 
 /**
- * One paragraph of long-form copy, with an optional stable identity.
+ * One paragraph of long-form copy, with a stable identity.
  *
- * `id` exists so a future CMS or editable collection can carry a block-level ID
- * from source to render without depending on its array index. Local content
- * leaves it undefined, and the renderer falls back to the paragraph text.
+ * CMS-managed content stores these blocks by `id` in
+ * `properties.description_blocks`, and the renderer uses them as keys so
+ * paragraph identity survives reordering and edits. Local fixtures store plain
+ * strings for convenience; they are normalised into this shape by
+ * `descriptionBlocks()` before render.
  */
 export interface PropertyParagraph {
-  readonly id?: string;
+  readonly id: string;
   readonly text: string;
 }
 
 /** Long-form description, and where it came from. */
 export interface PropertyDescription {
-  readonly paragraphs: readonly string[];
+  readonly paragraphs: readonly PropertyParagraph[];
   /**
    * `ai-assisted` copy is disclosed on the page. Nothing is published as human
    * writing when it is not.

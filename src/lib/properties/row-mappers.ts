@@ -1,5 +1,4 @@
 import type {
-  ConstructionUpdatesRow,
   DescriptionBlockRow,
   PropertiesRow,
   PropertyImagesRow,
@@ -13,10 +12,21 @@ import type {
   Property,
   PropertyDescription,
   PropertyDocument,
+  PropertyParagraph,
   PropertyTestimonial,
   PropertyVisual,
   PublicPropertyLocation,
 } from "@/types";
+
+/**
+ * Row → domain mapping. A database row is trusted as much as the local
+ * fixture would be if it were hand-edited — which is not very much. Any value
+ * that falls short of the shape the UI relies on is coerced away from a crash
+ * and into the safest interpretation: no marker, no directions.
+ *
+ * Keeping this in a pure function means tests can drive malformed rows
+ * through it without touching Supabase.
+ */
 
 /** Architectural drawing to render while a property has no photography yet. */
 const DEFAULT_PLACEHOLDER: ArchitecturalVariant = "single-storey";
@@ -42,7 +52,51 @@ function bySortOrder<T extends { sort_order: number }>(a: T, b: T): number {
 }
 
 // ---------------------------------------------------------------------------
-// Individual row types
+// Location
+// ---------------------------------------------------------------------------
+
+export function mapLocationRow(
+  row: PropertyPublicLocationsRow | undefined | null,
+): PublicPropertyLocation {
+  if (!row) {
+    // No projection row: nothing may be shown about the location. Absolute
+    // safest interpretation — hidden, no directions.
+    return {
+      visibility: "hidden",
+      publicLatitude: undefined,
+      publicLongitude: undefined,
+      markerMode: "automatic",
+      address: null,
+      allowDirections: false,
+      label: "Location available on enquiry",
+      accuracyNote:
+        "We share the location of this home directly with buyers who enquire.",
+    };
+  }
+
+  const hasCoordinates =
+    typeof row.public_latitude === "number" &&
+    Number.isFinite(row.public_latitude) &&
+    Math.abs(row.public_latitude) <= 90 &&
+    typeof row.public_longitude === "number" &&
+    Number.isFinite(row.public_longitude) &&
+    Math.abs(row.public_longitude) <= 180;
+
+  return {
+    visibility: row.location_visibility,
+    publicLatitude: hasCoordinates ? row.public_latitude! : undefined,
+    publicLongitude: hasCoordinates ? row.public_longitude! : undefined,
+    markerMode: row.marker_mode,
+    address: row.public_address,
+    // Directions without a coordinate cannot be offered, whatever the row says.
+    allowDirections: row.allow_directions && hasCoordinates,
+    label: row.location_label,
+    accuracyNote: row.accuracy_note,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Individual child rows
 // ---------------------------------------------------------------------------
 
 function mapDescription(
@@ -53,10 +107,12 @@ function mapDescription(
     return undefined;
   }
 
-  return {
-    paragraphs: blocks.map((block) => block.text),
-    source: source ?? "written",
-  };
+  const paragraphs: PropertyParagraph[] = blocks.map((block) => ({
+    id: block.id,
+    text: block.text,
+  }));
+
+  return { paragraphs, source: source ?? "written" };
 }
 
 function mapVisual(image: PropertyImagesRow): PropertyVisual | null {
@@ -69,7 +125,7 @@ function mapVisual(image: PropertyImagesRow): PropertyVisual | null {
 
   // A renderable visual needs somewhere to fetch the image from.
   if (kind === "photo" || kind === "floorplan") {
-    if (!image.storage_path) {
+    if (!image.storage_path && !image.external_url) {
       return null;
     }
   } else if (!image.external_url) {
@@ -119,17 +175,33 @@ function mapDocument(resource: PropertyResourcesRow): PropertyDocument | null {
           ? "specification"
           : null;
 
-  if (!kind || !resource.url) {
+  if (!kind) {
     return null;
   }
 
-  return {
-    id: resource.id,
-    kind,
-    label: resource.title,
-    path: resource.storage_path ?? "",
-    fileSizeLabel: resource.url ? undefined : undefined,
-  };
+  // Exactly one source. The caller (`propertyDocuments` in media.ts) resolves
+  // it — no fake storage path is ever passed downstream.
+  if (resource.storage_path) {
+    return {
+      id: resource.id,
+      kind,
+      label: resource.title,
+      path: resource.storage_path,
+      fileSizeLabel: undefined,
+    };
+  }
+
+  if (resource.url) {
+    return {
+      id: resource.id,
+      kind,
+      label: resource.title,
+      path: resource.url,
+      fileSizeLabel: undefined,
+    };
+  }
+
+  return null;
 }
 
 function mapTestimonial(
@@ -215,58 +287,5 @@ export function mapPropertyRow(row: PropertyJoinedRow): Property {
       : undefined,
     currentStageId: row.current_stage_id ?? undefined,
     location: mapLocationRow(locationRows[0]),
-  };
-}
-
-export type { ConstructionUpdatesRow, PropertyPublicLocationsRow };
-
-/**
- * Row → domain mapping for the location projection.
- *
- * A database row is trusted as much as the local fixture would be if it were
- * hand-edited — which is not very much. Any value that falls short of the
- * shape the UI relies on is coerced away from a crash and into the safest
- * interpretation: no marker, no directions.
- *
- * Keeping this in a pure function means tests can drive malformed rows
- * through it without touching Supabase.
- */
-export function mapLocationRow(
-  row: PropertyPublicLocationsRow | undefined | null,
-): PublicPropertyLocation {
-  if (!row) {
-    // No projection row: nothing may be shown about the location. Absolute
-    // safest interpretation — hidden, no directions.
-    return {
-      visibility: "hidden",
-      publicLatitude: undefined,
-      publicLongitude: undefined,
-      markerMode: "automatic",
-      address: null,
-      allowDirections: false,
-      label: "Location available on enquiry",
-      accuracyNote:
-        "We share the location of this home directly with buyers who enquire.",
-    };
-  }
-
-  const hasCoordinates =
-    typeof row.public_latitude === "number" &&
-    Number.isFinite(row.public_latitude) &&
-    Math.abs(row.public_latitude) <= 90 &&
-    typeof row.public_longitude === "number" &&
-    Number.isFinite(row.public_longitude) &&
-    Math.abs(row.public_longitude) <= 180;
-
-  return {
-    visibility: row.location_visibility,
-    publicLatitude: hasCoordinates ? row.public_latitude! : undefined,
-    publicLongitude: hasCoordinates ? row.public_longitude! : undefined,
-    markerMode: row.marker_mode,
-    address: row.public_address,
-    // Directions without a coordinate cannot be offered, whatever the row says.
-    allowDirections: row.allow_directions && hasCoordinates,
-    label: row.location_label,
-    accuracyNote: row.accuracy_note,
   };
 }

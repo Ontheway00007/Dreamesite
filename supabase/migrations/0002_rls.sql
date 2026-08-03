@@ -119,12 +119,14 @@ create policy "anyone may create an enquiry"
   to anon
   with check (
     status = 'new'
-    and property_id is null
-       or exists (
-         select 1 from public.properties p
-         where p.id = enquiries.property_id
-           and p.is_published
-       )
+    and (
+      property_id is null
+      or exists (
+        select 1 from public.properties p
+        where p.id = enquiries.property_id
+          and p.is_published
+      )
+    )
   );
 
 -- No `select`, `update` or `delete` policy for anon: those operations fail
@@ -221,10 +223,12 @@ create policy "signed-in users may create an enquiry"
   to authenticated
   with check (
     status = 'new'
-    and property_id is null
-       or exists (
-         select 1 from public.properties p
-         where p.id = enquiries.property_id
-           and p.is_published
-       )
+    and (
+      property_id is null
+      or exists (
+        select 1 from public.properties p
+        where p.id = enquiries.property_id
+          and p.is_published
+      )
+    )
   );

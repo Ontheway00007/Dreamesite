@@ -8,14 +8,34 @@ import type { PropertySource } from "@/lib/properties/source";
 /**
  * Supabase-backed property source.
  *
- * One query per repository call, with related rows embedded by PostgREST —
- * no N+1, no client-side stitching. Errors degrade to an empty result rather
- * than throwing, because a public catalogue page must never surface a
- * database error, and a temporarily offline database must not break the
- * build either.
+ * Read paths are shaped per call site so a slug lookup never pulls every
+ * image, and the homepage never waits on the detail-page payload. Every query
+ * hits public catalogue tables only — private tables are out of reach under
+ * the RLS configuration, and nothing here joins to them anyway.
+ *
+ * Errors degrade to an empty result rather than throwing, because a public
+ * page must never surface a database failure and an offline database must
+ * not break the build either.
  */
 
-const PROPERTY_SELECT = `
+/* --- Column sets --------------------------------------------------------- */
+
+/** Enough for cards, the map and the list. No description body, no children. */
+const SUMMARY_SELECT = `
+  id, slug, name, summary, status, suburb, state,
+  bedrooms, bathrooms, car_spaces, land_size_sqm, house_size_sqm,
+  price_display, completion_label, is_featured, display_priority,
+  display_is_home, display_opening_note, current_stage_id,
+  location: property_public_locations (
+    location_visibility, public_latitude, public_longitude,
+    public_address, marker_mode, location_label, accuracy_note,
+    allow_directions
+  ),
+  images: property_images (storage_path)
+`;
+
+/** Everything the detail page needs, including description and children. */
+const DETAIL_SELECT = `
   *,
   location: property_public_locations (*),
   images: property_images (*),
@@ -23,30 +43,93 @@ const PROPERTY_SELECT = `
   testimonials: property_testimonials (*)
 `;
 
-async function fetchRows(): Promise<PropertyJoinedRow[]> {
-  const client = createSupabaseCatalogClient();
+/* --- Row mapping ---------------------------------------------------------- */
 
-  const { data, error } = await client
-    .from("properties")
-    .select(PROPERTY_SELECT)
-    .eq("is_published", true)
-    .order("display_priority", { ascending: true })
-    .order("name", { ascending: true });
+type SummaryRow = Omit<
+  PropertyJoinedRow,
+  "property_resources" | "property_testimonials"
+>;
+
+function mapSummaryRow(row: SummaryRow): Property {
+  return mapPropertyRow({
+    ...row,
+    property_resources: null,
+    property_testimonials: null,
+  });
+}
+
+/* --- Helpers -------------------------------------------------------------- */
+
+function logServerError(context: string, error: unknown): void {
+  // Server-side only: detailed logs stay in infrastructure, never in the
+  // browser.
+  console.error(context, error);
+}
+
+async function maybeRows<T>(
+  context: string,
+  builder: PromiseLike<{ data: T[] | null; error: unknown }>,
+): Promise<T[]> {
+  const { data, error } = await Promise.resolve(builder);
 
   if (error) {
-    // Server-side only: the failure is logged with context but the caller
-    // receives an empty set — the browser never learns why.
-    console.error("Failed to load published properties from Supabase.", error);
+    logServerError(context, error);
     return [];
   }
 
-  return (data ?? []) as unknown as PropertyJoinedRow[];
+  return data ?? [];
 }
 
+async function maybeRow<T>(
+  context: string,
+  builder: PromiseLike<{ data: T | null; error: unknown }>,
+): Promise<T | null> {
+  const { data, error } = await Promise.resolve(builder);
+
+  if (error) {
+    logServerError(context, error);
+    return null;
+  }
+
+  return data;
+}
+
+/* --- Public reads --------------------------------------------------------- */
+
+/** Homepage: featured, summary fields only, in admin-defined order. */
+async function getSupabaseFeaturedProperties(): Promise<Property[]> {
+  const client = createSupabaseCatalogClient();
+  const rows = await maybeRows(
+    "Failed to load featured properties from Supabase.",
+    client
+      .from("properties")
+      .select(SUMMARY_SELECT)
+      .eq("is_published", true)
+      .eq("is_featured", true)
+      .order("display_priority", { ascending: true })
+      .order("name", { ascending: true }),
+  );
+
+  return rows.map((row) => mapSummaryRow(row as unknown as SummaryRow));
+}
+
+/** List page: summary fields only, in admin-defined order. */
 async function getSupabaseProperties(): Promise<Property[]> {
-  return (await fetchRows()).map(mapPropertyRow);
+  const client = createSupabaseCatalogClient();
+  const rows = await maybeRows(
+    "Failed to load published properties from Supabase.",
+    client
+      .from("properties")
+      .select(SUMMARY_SELECT)
+      .eq("is_published", true)
+      .order("display_priority", { ascending: true })
+      .order("name", { ascending: true }),
+  );
+
+  return rows.map((row) => mapSummaryRow(row as unknown as SummaryRow));
 }
 
+/** Detail page: complete row graph for one slug. */
 async function getSupabasePropertyBySlug(
   slug: string,
 ): Promise<Property | null> {
@@ -55,32 +138,35 @@ async function getSupabasePropertyBySlug(
   }
 
   const client = createSupabaseCatalogClient();
+  const row = await maybeRow(
+    `Failed to load property "${slug}" from Supabase.`,
+    client
+      .from("properties")
+      .select(DETAIL_SELECT)
+      .eq("is_published", true)
+      .eq("slug", slug)
+      .maybeSingle(),
+  );
 
-  const { data, error } = await client
-    .from("properties")
-    .select(PROPERTY_SELECT)
-    .eq("is_published", true)
-    .eq("slug", slug)
-    .maybeSingle();
-
-  if (error) {
-    console.error(
-      `Failed to load property "${slug}" from Supabase.`,
-      error,
-    );
-    return null;
-  }
-
-  return data ? mapPropertyRow(data as unknown as PropertyJoinedRow) : null;
+  return row ? mapPropertyRow(row as unknown as PropertyJoinedRow) : null;
 }
 
+/** Slugs only — the smallest possible read. */
 async function getSupabasePropertySlugs(): Promise<string[]> {
-  const rows = await fetchRows();
+  const client = createSupabaseCatalogClient();
+  const rows = await maybeRows(
+    "Failed to load property slugs from Supabase.",
+    client
+      .from("properties")
+      .select("slug")
+      .eq("is_published", true),
+  );
 
-  return rows.map((row) => row.slug);
+  return rows.map((row) => (row as { slug: string }).slug);
 }
 
-async function getSupabaseRelated(
+/** Suburb-first related homes, excluding the current one. */
+export async function getSupabaseRelated(
   slug: string,
   limit: number,
 ): Promise<Property[]> {
@@ -88,14 +174,25 @@ async function getSupabaseRelated(
     return [];
   }
 
-  const all = await getSupabaseProperties();
-  const current = all.find((property) => property.slug === slug);
+  const current = await getSupabasePropertyBySlug(slug);
 
   if (!current) {
-    return all.slice(0, limit);
+    return [];
   }
 
-  const others = all.filter((property) => property.slug !== slug);
+  const client = createSupabaseCatalogClient();
+  const rows = await maybeRows(
+    `Failed to load related properties for "${slug}" from Supabase.`,
+    client
+      .from("properties")
+      .select(SUMMARY_SELECT)
+      .eq("is_published", true)
+      .neq("slug", slug)
+      .order("display_priority", { ascending: true })
+      .order("name", { ascending: true }),
+  );
+
+  const others = (rows as unknown as SummaryRow[]).map(mapSummaryRow);
   const sameSuburb = others.filter(
     (property) => property.suburb === current.suburb,
   );
@@ -109,15 +206,15 @@ async function getSupabaseRelated(
 /**
  * Purposely no-throw: when Supabase is configured but unavailable, callers
  * see an empty catalogue, not a crashed page. The only hard failure is a
- * missing configuration, which means the wrong backend was selected.
+ * missing configuration, which means the wrong backend was selected at the
+ * dispatcher level.
  */
 export const supabaseSource: PropertySource = {
   getProperties: getSupabaseProperties,
+  getFeaturedProperties: getSupabaseFeaturedProperties,
   getPropertyBySlug: getSupabasePropertyBySlug,
   getPropertySlugs: getSupabasePropertySlugs,
 };
-
-export { getSupabaseRelated };
 
 /** True when the Supabase backend is usable. */
 export function isSupabaseSourceAvailable(): boolean {

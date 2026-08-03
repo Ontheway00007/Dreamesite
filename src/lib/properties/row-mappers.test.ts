@@ -225,4 +225,44 @@ describe("mapPropertyRow", () => {
     expect(property.testimonials).toBeUndefined();
     expect(property.displayHome).toBeUndefined();
   });
+
+  it("normalises description blocks into stable keyed paragraphs", () => {
+    const property = mapPropertyRow(
+      propertyRow({
+        description_blocks: [
+          { id: "para-1", text: "First." },
+          { id: "para-2", text: "Second." },
+        ],
+        description_source: "written",
+      }),
+    );
+
+    expect(property.description?.source).toBe("written");
+    expect(property.description?.paragraphs[0].id).toBe("para-1");
+    expect(property.description?.paragraphs[0].text).toBe("First.");
+    expect(property.description?.paragraphs[1].id).toBe("para-2");
+  });
+
+  it("omits a document that has neither a storage path nor a URL", () => {
+    const property = mapPropertyRow(
+      propertyRow({
+        property_resources: [
+          {
+            id: "r1",
+            property_id: "p1",
+            resource_type: "brochure",
+            title: "Broken brochure",
+            url: null,
+            storage_path: null,
+            sort_order: 0,
+            is_published: true,
+            created_at: "2026-08-03T00:00:00Z",
+            updated_at: "2026-08-03T00:00:00Z",
+          },
+        ],
+      }),
+    );
+
+    expect(property.documents).toBeUndefined();
+  });
 });
