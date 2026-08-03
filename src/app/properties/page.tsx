@@ -10,6 +10,8 @@ import { getProperties } from "@/lib/properties/repository";
 import { serviceAreas } from "@/lib/site-config";
 import type { Property } from "@/types";
 
+export const revalidate = 300;
+
 export const metadata: Metadata = {
   title: "Homes on the map",
   description:

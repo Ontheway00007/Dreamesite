@@ -8,6 +8,8 @@ import { StatisticsSection } from "@/components/sections/statistics-section";
 import { StatusSection } from "@/components/sections/status-section";
 import { siteConfig } from "@/lib/site-config";
 
+export const revalidate = 300;
+
 export default function HomePage() {
   return (
     <>

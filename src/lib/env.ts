@@ -71,6 +71,19 @@ export const env = {
     );
   },
 
+  /**
+   * True when both Supabase values are present — the repositories switch on
+   * this rather than letting a partial configuration hard-fail a page load.
+   * A missing value is only an error for code paths that have deliberately
+   * chosen the Supabase backend.
+   */
+  get isSupabaseConfigured(): boolean {
+    return Boolean(
+      process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() &&
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim(),
+    );
+  },
+
   /** Mapbox public access token (pk.*). */
   get mapboxToken(): string {
     return required(

@@ -1,9 +1,8 @@
 # Dreame
 
 Premium animated property showcase for a residential building company operating
-across northern Melbourne. This repository contains the design system, the app
-shell, the animation infrastructure and the marketing homepage. The interactive
-map and the Supabase-backed property system are built on top of it next.
+across northern Melbourne. The site reads property data from Supabase when it is
+configured, and falls back to committed demonstration fixtures when it is not.
 
 ## Stack
 
@@ -46,8 +45,56 @@ deployments.
 | `NEXT_PUBLIC_MAPBOX_STYLE`        | optional     | A Mapbox Studio style URL. Defaults to `mapbox://styles/mapbox/dark-v11` |
 | `NEXT_PUBLIC_SITE_URL`            | recommended  | Your canonical origin, e.g. `https://dreame.com.au`      |
 
-The anon key is designed to be public, so keep row level security enabled on
-every Supabase table. Restrict the Mapbox token to your domains before launch.
+The anon key is designed to be public — RLS is what limits what it can see.
+Restrict the Mapbox token to your domains before launch.
+
+## Data sources
+
+The property repository is a dispatcher over two sources implementing the same
+contract (`src/lib/properties/source.ts`):
+
+- **Supabase** whenever both `NEXT_PUBLIC_SUPABASE_URL` and
+  `NEXT_PUBLIC_SUPABASE_ANON_KEY` are set. Public catalogue reads go through
+  the anon key plus row-level security; server-only flows never use the
+  service key for user-facing reads.
+- **Local fixtures** (`src/content/properties.ts`) for development, tests and
+  CI when Supabase is not configured.
+
+Production with Supabase configured but unreachable degrades to the empty
+catalogue rather than silently shipping demonstration data; detailed errors
+stay in server logs.
+
+## Database setup
+
+The CLI is the supported path. On a machine with the Supabase CLI installed:
+
+```bash
+# authenticate and link
+supabase login
+supabase link --project-ref <your-project-ref>
+
+# apply the schema, policies and storage setup in one go
+supabase db push
+
+# generated TypeScript row types, dropped into src/types/database.ts
+supabase gen types typescript --linked > src/types/database.ts
+
+# against a local stack instead:
+supabase start
+supabase db reset         # re-applies migrations and runs supabase/seed.sql
+```
+
+When the CLI is unavailable, run the files in `supabase/migrations/` in order
+against the SQL editor, then `supabase/seed.sql` to load the demonstration
+records. Never edit an applied migration — add a new one.
+
+## Storage
+
+A public bucket `property-media` is created by migration `0004`. Files follow
+`properties/<property-id>/<kind>/<uuid>.<ext>` and anonymous uploads are
+denied: only `SELECT` policies exist for `anon`/`authenticated` until admin
+uploads arrive in Phase 6. Architectural placeholders are not moved into the
+bucket — they remain drawn locally.
 
 ## Scripts
 
@@ -271,8 +318,8 @@ src/
     design/                Property status presentation tokens
     images/                Supabase Storage URL resolution for property media
     map/                   Map config, GeoJSON building, marker artwork
-    properties/            Repository, filters, location privacy (+ tests)
-    supabase/              Browser and server Supabase clients
+    properties/            Data sources + repository + row mappers + filters + privacy (+ tests)
+    supabase/              Browser, server and catalogue clients
     env.ts                 Typed, validated environment access
     routes.ts              Internal path construction
     site-config.ts         Brand details, navigation, service areas
@@ -306,8 +353,8 @@ Three things still need the business to confirm them:
 | Where                    | What needs to happen                                                                                                                                    |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `site-config.ts`         | The email address and phone number are placeholders, and they are the only contact points on the site. Confirm both before launch.                        |
-| `content/properties.ts`  | Ten fictional concept façades with demonstration coordinates, so the map and cards could be built. Replace with real records, and review each `locationPrecision`, before launch. |
-| `/properties/[slug]`     | A deliberately minimal placeholder page so card links never 404. Phase 4 replaces it with the full detail page.                                                                 |
+| `content/properties.ts`  | Ten fictional concept façades with demonstration coordinates, used only when Supabase is not configured. The live source is the database; replace this file with documentation once it is retired. |
+| `supabase/seed.sql`      | The same concept content in database form. Replace with real records (and review every privacy setting) before public launch.                          |
 
 The statistics section only publishes figures derived from data in this
 repository — the number of core suburbs, statuses and build stages — so it cannot
