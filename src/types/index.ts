@@ -137,6 +137,18 @@ export interface PropertyTestimonial {
   readonly year?: string;
 }
 
+/**
+ * One paragraph of long-form copy, with an optional stable identity.
+ *
+ * `id` exists so a future CMS or editable collection can carry a block-level ID
+ * from source to render without depending on its array index. Local content
+ * leaves it undefined, and the renderer falls back to the paragraph text.
+ */
+export interface PropertyParagraph {
+  readonly id?: string;
+  readonly text: string;
+}
+
 /** Long-form description, and where it came from. */
 export interface PropertyDescription {
   readonly paragraphs: readonly string[];

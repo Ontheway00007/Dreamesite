@@ -14,7 +14,10 @@ import { RelatedProperties } from "@/components/property/detail/related-properti
 import { Button } from "@/components/ui/button";
 import { Eyebrow, Heading, Text } from "@/components/ui/typography";
 import { propertyStatusTokens } from "@/lib/design/property-status";
+import { propertyMediaUrl } from "@/lib/images/property-image";
+import { env } from "@/lib/env";
 import {
+  descriptionBlocks,
   getPropertyBySlug,
   getPropertySlugs,
   getRelatedProperties,
@@ -58,16 +61,22 @@ export async function generateMetadata({
 
   const status = propertyStatusTokens[property.status].label;
   const description = `${property.summary} ${status} in ${property.suburb} ${property.state}.`;
+  const canonicalUrl = `${env.siteUrl}${PROPERTIES_ROUTE}/${property.slug}`;
+
+  // The architectural drawing is not a photograph of the home, so it is left
+  // out of the Open Graph image rather than shared as if it were one.
+  const imageUrl = propertyMediaUrl(property.imagePath);
 
   return {
     title: `${property.name}, ${property.suburb}`,
     description,
-    alternates: { canonical: `${PROPERTIES_ROUTE}/${property.slug}` },
+    alternates: { canonical: canonicalUrl },
     openGraph: {
       type: "website",
       title: `${property.name}, ${property.suburb}`,
       description,
-      url: `${PROPERTIES_ROUTE}/${property.slug}`,
+      url: canonicalUrl,
+      ...(imageUrl ? { images: [{ url: imageUrl }] } : {}),
     },
   };
 }
@@ -102,8 +111,8 @@ function DetailSection({
 
 function progressDescription(property: Property): string {
   return property.status === "under-construction"
-    ? "Where this home is in our four documented build stages."
-    : "This home has been through every stage of our build process.";
+    ? "Where this home is in our documented build process."
+    : "This home has progressed through every recorded construction stage.";
 }
 
 export default async function PropertyPage({ params }: PropertyPageProps) {
@@ -128,8 +137,8 @@ export default async function PropertyPage({ params }: PropertyPageProps) {
       {property.description ? (
         <DetailSection eyebrow="Overview" title="About this home">
           <div className="max-w-2xl space-y-5">
-            {property.description.paragraphs.map((paragraph, index) => (
-              <Text key={index}>{paragraph}</Text>
+            {descriptionBlocks(property.description).map((block) => (
+              <Text key={block.key}>{block.text}</Text>
             ))}
             {property.description.source === "ai-assisted" ? (
               <Text size="small" tone="subtle">
@@ -160,7 +169,7 @@ export default async function PropertyPage({ params }: PropertyPageProps) {
       <DetailSection
         eyebrow="Location"
         title="Where this home sits."
-        description="We publish location detail only as far as the owner of each home has agreed."
+        description="Each home is published according to the privacy settings configured for it."
       >
         <PropertyLocationSection property={property} />
       </DetailSection>

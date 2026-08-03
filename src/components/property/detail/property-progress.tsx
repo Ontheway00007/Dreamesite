@@ -33,9 +33,9 @@ export interface PropertyProgressProps {
 /**
  * Where this home is in the build.
  *
- * The stages are the company's four documented stages, and the state of each is
- * derived from the property, so this section cannot describe a stage that is not
- * part of the published process.
+ * The stages are read from the company's documented build process, and the
+ * state of each is derived from the property, so this section cannot describe a
+ * stage that is not part of the published process.
  */
 export function PropertyProgress({ property }: PropertyProgressProps) {
   const { milestones, percentComplete, currentStage } =

@@ -1,7 +1,7 @@
 import { propertyRecords } from "@/content/properties";
 import { toPublicProperty } from "@/lib/properties/privacy";
 import { propertyStatusOrder } from "@/lib/design/property-status";
-import type { Property } from "@/types";
+import type { Property, PropertyDescription } from "@/types";
 
 /**
  * Data access boundary for properties.
@@ -46,6 +46,26 @@ export async function getPropertyBySlug(
 /** Slugs for static generation of property routes. */
 export async function getPropertySlugs(): Promise<string[]> {
   return propertyRecords.map((record) => record.slug);
+}
+
+export interface DescriptionBlock {
+  readonly key: string;
+  readonly text: string;
+}
+
+/**
+ * Normalises a stored description into keyed render blocks.
+ *
+ * `PropertyDescription.paragraphs` stores plain strings so existing local
+ * content stays unchanged, but this shape detaches the UI from array indexes:
+ * the render consumes `(key, text)` pairs rather than `(paragraph, index)`.
+ * When CMS-managed paragraphs move to `PropertyParagraph` entries with `id`,
+ * only this function changes — the JSX and the keys stay stable.
+ */
+export function descriptionBlocks(
+  description: PropertyDescription,
+): readonly DescriptionBlock[] {
+  return description.paragraphs.map((text) => ({ key: text, text }));
 }
 
 /**

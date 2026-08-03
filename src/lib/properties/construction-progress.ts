@@ -4,7 +4,7 @@ import type { Property } from "@/types";
 /**
  * Build progress for a single home.
  *
- * Derived from the company's four build stages and the property's
+ * Derived from the company's documented build stages and the property's
  * `currentStageId`, rather than stored stage by stage. That keeps one definition
  * of the process — the same one the homepage explains — and means a home cannot
  * claim a stage that does not exist.

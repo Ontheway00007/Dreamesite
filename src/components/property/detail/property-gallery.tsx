@@ -34,7 +34,6 @@ export function PropertyGallery({ visuals, alt }: PropertyGalleryProps) {
             fill
             sizes="(min-width: 1024px) 60rem, 100vw"
             className="object-cover"
-            priority
           />
         ) : (
           <div className="text-foreground-subtle/45 h-full w-full p-10">
@@ -43,11 +42,7 @@ export function PropertyGallery({ visuals, alt }: PropertyGalleryProps) {
         )}
       </div>
 
-      <div
-        role="tablist"
-        aria-label="Property images"
-        className="mt-4 flex flex-wrap gap-3"
-      >
+      <div aria-label="Property images" className="mt-4 flex flex-wrap gap-3">
         {visuals.map((visual, index) => {
           const isActive = index === activeIndex;
 
@@ -55,19 +50,16 @@ export function PropertyGallery({ visuals, alt }: PropertyGalleryProps) {
             <button
               key={visual.id}
               type="button"
-              role="tab"
-              aria-selected={isActive}
+              aria-pressed={isActive}
+              aria-label={visual.caption ?? `Show image ${index + 1}`}
               onClick={() => setActiveIndex(index)}
               className={cn(
-                "bg-background-alt relative aspect-4/3 w-24 overflow-hidden rounded-lg border transition-colors duration-(--duration-fast)",
+                "bg-background-alt relative aspect-4/3 w-24 overflow-hidden rounded-lg border transition-colors duration-(--duration-fast) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--ring)",
                 isActive
                   ? "border-accent"
                   : "border-border hover:border-border-strong",
               )}
             >
-              <span className="sr-only">
-                {visual.caption ?? `View image ${index + 1}`}
-              </span>
               {visual.url ? (
                 <Image
                   src={visual.url}

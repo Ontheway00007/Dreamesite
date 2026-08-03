@@ -3,6 +3,7 @@ import Link from "next/link";
 import { MapPin, Navigation, ShieldCheck } from "lucide-react";
 
 import { Text } from "@/components/ui/typography";
+import { isValidCoordinate } from "@/lib/properties/privacy";
 import { PROPERTIES_ROUTE } from "@/lib/routes";
 import type { Property } from "@/types";
 
@@ -23,9 +24,16 @@ export function PropertyLocationSection({
   const { address, label, accuracyNote, allowDirections, visibility } =
     property.location;
 
-  const directionsHref = allowDirections
-    ? `https://www.google.com/maps/search/?api=1&query=${property.location.publicLatitude},${property.location.publicLongitude}`
-    : null;
+  // Directions are only built from a validated public coordinate — never from
+  // a stored private one — and only when the property's settings allow them.
+  const directionsHref =
+    allowDirections &&
+    isValidCoordinate(
+      property.location.publicLatitude,
+      property.location.publicLongitude,
+    )
+      ? `https://www.google.com/maps/search/?api=1&query=${property.location.publicLatitude},${property.location.publicLongitude}`
+      : null;
 
   return (
     <div className="grid gap-10 lg:grid-cols-[1.1fr_1fr] lg:gap-16">
@@ -79,10 +87,10 @@ export function PropertyLocationSection({
           How we handle addresses
         </p>
         <Text size="small" className="mt-4">
-          We publish only what the owner of each home has agreed to. Where a home
-          is occupied or a family has asked for discretion, the map shows a
-          generalised location and the address is withheld. Buyers who enquire
-          get the detail they need directly from us.
+          Each home is published according to its selected privacy settings.
+          Where a home is occupied or a family has asked for discretion, the map
+          shows a generalised location and the address is withheld. Buyers who
+          enquire get the detail they need directly from us.
         </Text>
       </div>
     </div>
