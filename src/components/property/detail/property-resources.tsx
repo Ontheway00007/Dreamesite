@@ -25,8 +25,10 @@ export function PropertyResources({ property }: PropertyResourcesProps) {
   const drone = droneVideo(property);
   const documents = propertyDocuments(property);
 
-  const tourHref = tour?.externalUrl ?? tour?.url ?? null;
-  const droneHref = drone?.externalUrl ?? drone?.url ?? null;
+  // Both are external links, so `url` is always the resolved address — the
+  // resolver returns an external URL unchanged.
+  const tourHref = tour?.url ?? null;
+  const droneHref = drone?.url ?? null;
 
   if (!tourHref && !droneHref && documents.length === 0) {
     return null;

@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 
 import { getAdminPropertyById, getPublishBlockers } from "@/lib/admin/repository";
+import { getPropertyMedia } from "@/lib/admin/media-repository";
 import { PropertyEditor } from "@/components/admin/property-editor";
 
 export const metadata = { title: "Edit property" };
@@ -13,10 +14,13 @@ interface Props {
 export default async function EditPropertyPage({ params }: Props) {
   const { id } = await params;
 
-  // Both reads are independent, so they go out together.
-  const [detail, publishBlockers] = await Promise.all([
+  // Three independent reads, issued together so the page waits one round trip
+  // rather than three. Media is fetched separately from the property so the
+  // media response carries no location data and vice versa.
+  const [detail, publishBlockers, media] = await Promise.all([
     getAdminPropertyById(id),
     getPublishBlockers(id),
+    getPropertyMedia(id),
   ]);
 
   if (!detail) {
@@ -61,6 +65,7 @@ export default async function EditPropertyPage({ params }: Props) {
         privateLocation={detail.privateLocation}
         locationSettings={detail.locationSettings}
         publishBlockers={publishBlockers}
+        media={media}
       />
     </div>
   );

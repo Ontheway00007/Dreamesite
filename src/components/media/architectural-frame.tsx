@@ -6,7 +6,7 @@ import type { ArchitecturalVariant } from "@/types";
  *
  * These are deliberately drawn, not stock imagery: an elevation sketch reads as
  * an intentional placeholder rather than a stand-in for a real home. Swap them
- * out per property by setting `imagePath` on the property record.
+ * out per property by choosing a hero image in the admin media manager.
  */
 const variants: Record<ArchitecturalVariant, React.ReactNode> = {
   "single-storey": (

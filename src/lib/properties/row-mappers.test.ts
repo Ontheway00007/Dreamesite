@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { mapLocationRow, mapPropertyRow } from "@/lib/properties/row-mappers";
-import type { PropertyJoinedRow } from "@/types/database";
+import type {
+  PropertyImagesRow,
+  PropertyJoinedRow,
+  PropertyResourcesRow,
+} from "@/types/database";
 import type { Property } from "@/types";
 
 describe("mapLocationRow", () => {
@@ -106,6 +110,58 @@ function propertyRow(overrides: Partial<PropertyJoinedRow> = {}): PropertyJoined
   };
 }
 
+/**
+ * Row factories.
+ *
+ * Media rows carry a dozen columns, most of them irrelevant to any one
+ * assertion. These fill the defaults so each test states only what it is
+ * actually about, and so a new column added to the schema is a change here
+ * rather than in every fixture.
+ */
+function imageRow(
+  overrides: Partial<PropertyImagesRow> & { id: string },
+): PropertyImagesRow {
+  return {
+    property_id: "p1",
+    image_type: "gallery",
+    storage_path: null,
+    external_url: null,
+    alt_text: null,
+    caption: null,
+    sort_order: 0,
+    is_published: true,
+    original_filename: null,
+    mime_type: null,
+    width: null,
+    height: null,
+    file_size_bytes: null,
+    created_at: "2026-08-03T00:00:00Z",
+    updated_at: "2026-08-03T00:00:00Z",
+    ...overrides,
+  };
+}
+
+function resourceRow(
+  overrides: Partial<PropertyResourcesRow> & { id: string },
+): PropertyResourcesRow {
+  return {
+    property_id: "p1",
+    resource_type: "document",
+    title: "Untitled",
+    url: null,
+    storage_path: null,
+    sort_order: 0,
+    is_published: true,
+    caption: null,
+    original_filename: null,
+    mime_type: null,
+    file_size_bytes: null,
+    created_at: "2026-08-03T00:00:00Z",
+    updated_at: "2026-08-03T00:00:00Z",
+    ...overrides,
+  };
+}
+
 describe("mapPropertyRow", () => {
   it("covers the minimum public contract", () => {
     const property: Property = mapPropertyRow(propertyRow());
@@ -121,59 +177,38 @@ describe("mapPropertyRow", () => {
     const property = mapPropertyRow(
       propertyRow({
         property_images: [
-          {
+          imageRow({
             id: "i1",
-            property_id: "p1",
             image_type: "hero",
             storage_path: "hero/facade.jpg",
-            external_url: null,
             alt_text: "Hero",
             caption: "Hero shot",
             sort_order: 0,
-            is_published: true,
-            created_at: "2026-08-03T00:00:00Z",
-            updated_at: "2026-08-03T00:00:00Z",
-          },
-          {
+          }),
+          imageRow({
             id: "i2",
-            property_id: "p1",
             image_type: "floor_plan",
             storage_path: "floor/plan.png",
-            external_url: null,
             alt_text:
               "Floor plan showing three bedrooms, two bathrooms and a garage",
-            caption: null,
             sort_order: 1,
-            is_published: true,
-            created_at: "2026-08-03T00:00:00Z",
-            updated_at: "2026-08-03T00:00:00Z",
-          },
+          }),
         ],
         property_resources: [
-          {
+          resourceRow({
             id: "r1",
-            property_id: "p1",
             resource_type: "virtual-tour",
             title: "Take the tour",
             url: "https://tour.example",
-            storage_path: null,
             sort_order: 0,
-            is_published: true,
-            created_at: "2026-08-03T00:00:00Z",
-            updated_at: "2026-08-03T00:00:00Z",
-          },
-          {
+          }),
+          resourceRow({
             id: "r2",
-            property_id: "p1",
             resource_type: "brochure",
             title: "Download the brochure",
-            url: "https://files.example/brochure.pdf",
             storage_path: "brochures/b.pdf",
             sort_order: 1,
-            is_published: true,
-            created_at: "2026-08-03T00:00:00Z",
-            updated_at: "2026-08-03T00:00:00Z",
-          },
+          }),
         ],
         property_testimonials: [
           {
@@ -205,7 +240,10 @@ describe("mapPropertyRow", () => {
       }),
     );
 
-    expect(property.imagePath).toBe("hero/facade.jpg");
+    expect(property.heroImage?.source).toEqual({
+      kind: "storage",
+      path: "hero/facade.jpg",
+    });
     expect(property.visuals?.map((v) => v.kind)).toEqual([
       "photo",
       "floorplan",
@@ -247,22 +285,181 @@ describe("mapPropertyRow", () => {
     const property = mapPropertyRow(
       propertyRow({
         property_resources: [
-          {
+          resourceRow({
             id: "r1",
-            property_id: "p1",
             resource_type: "brochure",
             title: "Broken brochure",
-            url: null,
-            storage_path: null,
-            sort_order: 0,
-            is_published: true,
-            created_at: "2026-08-03T00:00:00Z",
-            updated_at: "2026-08-03T00:00:00Z",
-          },
+          }),
         ],
       }),
     );
 
     expect(property.documents).toBeUndefined();
+  });
+
+  /* --- Media discipline ------------------------------------------------ */
+
+  it("keeps an external document source external", () => {
+    // The bug this guards: an external URL written into the storage-path
+    // field, then resolved through the bucket URL builder, producing a dead
+    // link inside our own bucket and offering it to visitors as a download.
+    const property = mapPropertyRow(
+      propertyRow({
+        property_resources: [
+          resourceRow({
+            id: "r1",
+            resource_type: "brochure",
+            title: "Hosted elsewhere",
+            url: "https://files.example.com/brochure.pdf",
+          }),
+        ],
+      }),
+    );
+
+    expect(property.documents?.[0].source).toEqual({
+      kind: "external",
+      url: "https://files.example.com/brochure.pdf",
+    });
+  });
+
+  it("treats a drone photograph as a photograph", () => {
+    // `drone` in property_images is a still. Mapping it to a video kind and
+    // then requiring an external URL discarded every uploaded drone image.
+    const property = mapPropertyRow(
+      propertyRow({
+        property_images: [
+          imageRow({
+            id: "i1",
+            image_type: "drone",
+            storage_path: "properties/p1/drone/a.jpg",
+          }),
+        ],
+      }),
+    );
+
+    expect(property.visuals).toHaveLength(1);
+    expect(property.visuals?.[0].kind).toBe("photo");
+    expect(property.visuals?.[0].category).toBe("drone");
+  });
+
+  it("carries per-image alt text into the domain model", () => {
+    const property = mapPropertyRow(
+      propertyRow({
+        property_images: [
+          imageRow({
+            id: "i1",
+            storage_path: "properties/p1/gallery/a.jpg",
+            alt_text: "Kitchen island beneath a skylight",
+          }),
+        ],
+      }),
+    );
+
+    expect(property.visuals?.[0].altText).toBe(
+      "Kitchen island beneath a skylight",
+    );
+  });
+
+  it("excludes unpublished media even when the query returned it", () => {
+    // RLS is the real control. This asserts the mapper does not depend on it,
+    // so a future authenticated caller cannot leak drafts into a public shape.
+    const property = mapPropertyRow(
+      propertyRow({
+        property_images: [
+          imageRow({
+            id: "draft",
+            storage_path: "properties/p1/gallery/draft.jpg",
+            is_published: false,
+          }),
+          imageRow({
+            id: "live",
+            storage_path: "properties/p1/gallery/live.jpg",
+            is_published: true,
+          }),
+        ],
+        property_resources: [
+          resourceRow({
+            id: "draft-doc",
+            resource_type: "brochure",
+            title: "Draft brochure",
+            storage_path: "properties/p1/documents/draft.pdf",
+            is_published: false,
+          }),
+        ],
+      }),
+    );
+
+    expect(property.visuals?.map((visual) => visual.id)).toEqual(["live"]);
+    expect(property.documents).toBeUndefined();
+  });
+
+  it("ignores an unpublished hero rather than publishing it", () => {
+    const property = mapPropertyRow(
+      propertyRow({
+        property_images: [
+          imageRow({
+            id: "hero",
+            image_type: "hero",
+            storage_path: "properties/p1/hero/a.jpg",
+            is_published: false,
+          }),
+        ],
+      }),
+    );
+
+    expect(property.heroImage).toBeUndefined();
+  });
+
+  it("accepts an externally hosted hero", () => {
+    const property = mapPropertyRow(
+      propertyRow({
+        property_images: [
+          imageRow({
+            id: "hero",
+            image_type: "hero",
+            external_url: "https://images.example.com/hero.jpg",
+          }),
+        ],
+      }),
+    );
+
+    expect(property.heroImage?.source).toEqual({
+      kind: "external",
+      url: "https://images.example.com/hero.jpg",
+    });
+  });
+
+  it("normalises the legacy non-ASCII facade category", () => {
+    const property = mapPropertyRow(
+      propertyRow({
+        property_images: [
+          imageRow({
+            id: "i1",
+            image_type: "façade",
+            storage_path: "properties/p1/facade/a.jpg",
+          }),
+        ],
+      }),
+    );
+
+    expect(property.visuals?.[0].category).toBe("facade");
+  });
+
+  it("orders media by sort_order", () => {
+    const property = mapPropertyRow(
+      propertyRow({
+        property_images: [
+          imageRow({ id: "third", storage_path: "c.jpg", sort_order: 2 }),
+          imageRow({ id: "first", storage_path: "a.jpg", sort_order: 0 }),
+          imageRow({ id: "second", storage_path: "b.jpg", sort_order: 1 }),
+        ],
+      }),
+    );
+
+    expect(property.visuals?.map((visual) => visual.id)).toEqual([
+      "first",
+      "second",
+      "third",
+    ]);
   });
 });

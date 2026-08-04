@@ -32,7 +32,9 @@ export function PropertyShowcase({ property }: PropertyShowcaseProps) {
         {visual.url ? (
           <Image
             src={visual.url}
-            alt={alt}
+            // The editor's description when there is one; the name and suburb
+            // otherwise.
+            alt={visual.altText ?? alt}
             fill
             sizes="(min-width: 1024px) 60rem, 100vw"
             className="object-cover"

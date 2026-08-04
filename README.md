@@ -92,13 +92,191 @@ When the CLI is unavailable, run the files in `supabase/migrations/` in order
 against the SQL editor, then `supabase/seed.sql` to load the demonstration
 records. Never edit an applied migration — add a new one.
 
-## Storage
+## Media and storage
 
-A public bucket `property-media` is created by migration `0004`. Files follow
-`properties/<property-id>/<kind>/<uuid>.<ext>`. Anonymous uploads are
-denied. Authenticated administrators can upload, update, and delete files via
-RLS policies in migration `0007`. Architectural placeholders are not moved
-into the bucket — they remain drawn locally.
+Property media lives in one public Supabase Storage bucket, `property-media`,
+created by migration `0004`.
+
+### Path layout
+
+Every stored object follows exactly one shape:
+
+```
+properties/<property-uuid>/<category>/<object-uuid>.<ext>
+```
+
+with `<category>` one of `hero`, `gallery`, `facade`, `construction`,
+`floor-plans`, `drone`, `documents`.
+
+The object name is generated server-side from a fresh UUID and the extension
+implied by the verified MIME type. **The uploaded filename never contributes to
+it**, which removes collisions, double extensions such as `.php.jpg`, and
+filenames that describe the property. The original name is kept as metadata
+only.
+
+Because every segment is a UUID or a fixed category word, traversal sequences
+cannot match the pattern — `..` is not a UUID. Path escape is prevented by the
+grammar rather than by stripping characters.
+
+### Storage policies
+
+Writes require **all three** of: the right bucket, an active administrator, and
+a path matching the layout above. The path check is
+`public.is_valid_property_media_path()` (migration `0009`), which also confirms
+the named property exists.
+
+Migration `0007` checked only the bucket and admin status, so any administrator
+could write anywhere in the bucket under any name. `0009` replaces those three
+policies.
+
+`UPDATE` carries both `USING` and `WITH CHECK`, so an object cannot be moved
+from a valid path to an invalid one.
+
+**On reads:** `property-media` is a *public* bucket. Its objects are readable by
+anyone with the URL, and the `SELECT` policies from `0004` do not change that —
+they are defence in depth for a future switch to a private bucket. Draft media
+is protected by its URL not being published, and by the row policies on
+`property_images` / `property_resources` which stop an anonymous reader
+discovering it. Nothing in this system should be described as though read
+policies restrict access to a known public URL.
+
+### Upload flow
+
+Files go from the browser straight to Storage. Next.js never handles the bytes,
+which keeps a 20 MB floor plan away from the Server Action body limit and out of
+server memory.
+
+1. **Ticket** — `requestImageUpload` / `requestDocumentUpload` verify the
+   administrator, the property, the MIME type, the extension and the size, then
+   return the object name to use.
+2. **Upload** — the browser writes to that path under its own authenticated
+   session. The Storage policy independently re-checks admin status and path
+   layout, so a client that ignores the returned path gets nowhere useful.
+3. **Finalise** — `finaliseImageUpload` / `finaliseDocumentUpload` confirm the
+   object is actually present, then write the row.
+
+Step 3 is what makes a database row evidence that a file exists. A row written
+before the upload finished would be a broken image on a live page.
+
+### Failure handling
+
+Postgres and Storage are separate systems with no shared transaction, so this
+is **not** transactional across both. The sequencing is chosen so any single
+failure leaves a *safe* state:
+
+| Failure | Result |
+| --- | --- |
+| Finalisation fails after upload | The object is deleted. If that also fails, an unreferenced object remains and is logged. |
+| Delete: row removed, object delete fails | The file stops being served immediately. The administrator is told the file may remain — it is not reported as deleted. |
+| Replace: upload or row update fails | The previous file is untouched and still working. The new object is cleaned up. |
+| Replace succeeds, old object delete fails | New image live; the administrator is told the old file remains. |
+
+Deletion is database-first deliberately. The reverse order would produce a
+visibly broken image on a live page, which is worse than an invisible orphan.
+
+**Known limitation:** there is no background sweeper for unreferenced objects.
+They are logged when they occur and must be cleaned up manually.
+
+### Accepted formats
+
+| Purpose | Accepted | Limit |
+| --- | --- | --- |
+| Photography | JPEG, PNG, WebP | 15 MB |
+| Floor plan images | JPEG, PNG, WebP | 20 MB |
+| Documents | PDF | 25 MB |
+
+Two deliberate exclusions:
+
+- **SVG** — an SVG is a document that can carry script. Served from our own
+  origin it would be a stored-XSS vector. Accepting it needs a reviewed
+  sanitisation step, which does not exist, so it is refused rather than
+  half-handled.
+- **AVIF** — decoding depends on the `sharp` build behind `next/image`, and that
+  has not been verified in this deployment. Accepting a format whose rendering
+  is unconfirmed risks an upload the public site cannot display.
+
+Limits live in `lib/media/config.ts` and nowhere else. The browser checks them
+for immediate feedback; the server checks them again and is the authority.
+
+### External media
+
+Tours, video and drone footage are links. `validateExternalUrl` requires
+`https:` and nothing else — `javascript:` in an `href` executes on click,
+`data:` can carry an HTML document, `file:` points at the visitor's own disk,
+and plain `http:` is blocked as mixed content. Rather than enumerating what to
+block, only one scheme is allowed through. Credentials in the URL and links to
+`localhost` are refused too.
+
+A storage path and an external URL are different things and are modelled as a
+discriminated union, `MediaSource`:
+
+```ts
+type MediaSource =
+  | { kind: "storage"; path: string }
+  | { kind: "external"; url: string }
+```
+
+`resolveMediaSource` in `lib/properties/media.ts` is the only function that
+turns one into a URL. The earlier model used optional sibling fields, and one
+reader got it wrong — external document URLs were routed through the storage URL
+builder, producing dead links inside our own bucket and offering them to
+visitors as downloads. The union makes that class of mistake unavailable.
+
+### Hero images
+
+The hero is the row whose `image_type` is `hero`. There is deliberately no
+competing `is_hero` boolean: two mechanisms would eventually disagree.
+
+- At most one per property, enforced by a partial unique index.
+- `set_property_hero_image()` promotes and demotes in one transaction, so the
+  property never has two heroes or none.
+- A floor plan cannot be the hero — a card showing a line drawing where every
+  other card shows a photograph reads as a fault.
+- Either source kind is acceptable; an externally hosted hero is as valid as an
+  uploaded one.
+- Removing the hero falls back to the architectural drawing, which is a valid
+  presentation rather than a gap.
+
+### Ordering
+
+`reorder_property_images()` and `reorder_property_resources()` rewrite a whole
+group's `sort_order` in one statement. Both refuse ids belonging to another
+property, ids from another category, duplicates, and non-administrators — the
+ownership check covers cross-property tampering and accidental category changes
+at once.
+
+The admin interface reorders with up and down buttons, not dragging. Drag is a
+pleasant addition for a mouse and an impossibility without one, so the buttons
+are the interface rather than a fallback behind it.
+
+### Alt text
+
+**Publishing an image requires alt text. Every category, no exceptions.**
+
+The tempting exception is a "decorative" image needing no description. None of
+these categories is decorative: each shows something about the home, which is
+why it is published at all. A gallery photograph without a description is simply
+missing from the page for someone using a screen reader.
+
+The requirement applies at publication rather than upload, so a batch can be
+uploaded and described afterwards without the form fighting the editor. A
+caption does not satisfy it — a caption is written for everyone and usually adds
+context rather than describing the picture.
+
+A published image lacking alt text is flagged in the media manager, and the
+publish action refuses it wherever it is triggered from.
+
+### Publishing a property
+
+Photography is **not** required to publish a property — the architectural
+drawing is a valid presentation. What is required is that published media is
+coherent: a published hero must resolve, published media must have a valid
+source, and no draft media reaches a public read.
+
+Draft exclusion is enforced twice: RLS stops the anon key reading a draft row,
+and `mapPropertyRow` filters unpublished rows regardless of who queried. The
+second exists so "draft media never becomes public media" is a property of the
+mapping rather than only of the caller.
 
 ## Authentication & Admin
 

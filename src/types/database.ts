@@ -107,13 +107,32 @@ export interface SuburbReferencesRow {
 export interface PropertyImagesRow {
   id: string;
   property_id: string;
-  image_type: "hero" | "gallery" | "façade" | "construction" | "floor_plan" | "drone";
+  /**
+   * 'façade' is the legacy non-ASCII value migration 0009 rewrote to
+   * 'facade'. It remains in the union so rows read from a database that has
+   * not yet had 0009 applied still type-check; nothing writes it.
+   */
+  image_type:
+    | "hero"
+    | "gallery"
+    | "facade"
+    | "façade"
+    | "construction"
+    | "floor_plan"
+    | "drone";
   storage_path: string | null;
   external_url: string | null;
   alt_text: string | null;
   caption: string | null;
   sort_order: number;
   is_published: boolean;
+  /* Added by migration 0009. Null for rows created before it, and for
+     externally hosted images we did not receive a file for. */
+  original_filename: string | null;
+  mime_type: string | null;
+  width: number | null;
+  height: number | null;
+  file_size_bytes: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -160,6 +179,11 @@ export interface PropertyResourcesRow {
   storage_path: string | null;
   sort_order: number;
   is_published: boolean;
+  /* Added by migration 0009. */
+  caption: string | null;
+  original_filename: string | null;
+  mime_type: string | null;
+  file_size_bytes: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -352,6 +376,37 @@ export interface Database {
       property_publish_blockers: {
         Args: { p_property_id: string };
         Returns: string[];
+      };
+      /**
+       * Promotes one image to hero and demotes the previous one, atomically.
+       * See migration 0009.
+       */
+      set_property_hero_image: {
+        Args: { p_property_id: string; p_image_id: string };
+        Returns: void;
+      };
+      /** Rewrites sort_order across one image group in a single statement. */
+      reorder_property_images: {
+        Args: {
+          p_property_id: string;
+          p_image_type: string;
+          p_image_ids: string[];
+        };
+        Returns: void;
+      };
+      /** Rewrites sort_order across one resource group in a single statement. */
+      reorder_property_resources: {
+        Args: {
+          p_property_id: string;
+          p_resource_type: string;
+          p_resource_ids: string[];
+        };
+        Returns: void;
+      };
+      /** True when a storage object name matches the required media layout. */
+      is_valid_property_media_path: {
+        Args: { object_name: string };
+        Returns: boolean;
       };
     };
     Enums: Record<string, never>;

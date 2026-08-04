@@ -23,6 +23,8 @@ import type {
 import { LocationEditor } from "@/components/admin/location-editor";
 import { AdminAlert } from "@/components/admin/admin-alert";
 import { Field, Toggle } from "@/components/admin/form-controls";
+import { MediaManager } from "@/components/admin/media/media-manager";
+import type { AdminPropertyMedia } from "@/lib/admin/media-repository";
 
 interface Props {
   mode: "create" | "edit";
@@ -32,6 +34,8 @@ interface Props {
   locationSettings?: PropertyLocationSettingsRow | null;
   /** Reasons this property cannot be published, from the database. */
   publishBlockers?: readonly string[];
+  /** Every image and resource on this property, drafts included. */
+  media?: AdminPropertyMedia;
 }
 
 type TabId = "details" | "location" | "media";
@@ -56,6 +60,7 @@ export function PropertyEditor({
   privateLocation,
   locationSettings,
   publishBlockers = [],
+  media,
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -628,15 +633,22 @@ export function PropertyEditor({
       )}
 
       {/* Media */}
-      {activeTab === "media" && (
-        <div className="bg-surface border-border rounded-xl border p-6">
-          <p className="text-foreground-muted text-sm">
-            {mode === "create"
-              ? "Create the property first — media is attached to a saved record."
-              : "Media management arrives in the next phase. Uploads, ordering and deletion are already permitted for administrators at the storage layer."}
-          </p>
-        </div>
-      )}
+      {activeTab === "media" &&
+        (mode === "create" || !propertyId || !media ? (
+          <AdminAlert tone="info" title="Save the property first">
+            <p className="mt-1">
+              Media is stored against a saved property. Create it on the Details
+              tab, then add photography here.
+            </p>
+          </AdminAlert>
+        ) : (
+          <MediaManager
+            propertyId={propertyId}
+            images={media.images}
+            resources={media.resources}
+            failed={media.failed}
+          />
+        ))}
     </div>
   );
 }

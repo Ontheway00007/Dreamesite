@@ -9,9 +9,11 @@ import type {
 } from "@/types/database";
 import type {
   ArchitecturalVariant,
+  MediaSource,
   Property,
   PropertyDescription,
   PropertyDocument,
+  PropertyImageCategory,
   PropertyParagraph,
   PropertyTestimonial,
   PropertyVisual,
@@ -150,41 +152,76 @@ function mapDescription(
   return { paragraphs, source: source ?? "written" };
 }
 
-function mapVisual(image: PropertyImagesRow): PropertyVisual | null {
-  const kind =
-    image.image_type === "floor_plan"
-      ? "floorplan"
-      : image.image_type === "drone"
-        ? "drone-video"
-        : "photo";
+/**
+ * Builds a media source from a row's two mutually exclusive source columns.
+ *
+ * Returns null when neither is set. The `image_source_present` and
+ * `resource_target_present` constraints make that unreachable through normal
+ * writes, but a mapper that assumes its input is well-formed is a mapper that
+ * throws on the one row that is not.
+ */
+function mapSource(
+  storagePath: string | null,
+  externalUrl: string | null,
+): MediaSource | null {
+  // Storage wins if somehow both are set. `property_images_single_source`
+  // forbids that combination, so this is a tiebreak that should never fire.
+  if (storagePath) {
+    return { kind: "storage", path: storagePath };
+  }
 
-  // A renderable visual needs somewhere to fetch the image from.
-  if (kind === "photo" || kind === "floorplan") {
-    if (!image.storage_path && !image.external_url) {
-      return null;
-    }
-  } else if (!image.external_url) {
+  if (externalUrl) {
+    return { kind: "external", url: externalUrl };
+  }
+
+  return null;
+}
+
+/** Normalises the legacy non-ASCII category value migration 0009 replaced. */
+function normaliseImageCategory(
+  imageType: PropertyImagesRow["image_type"],
+): PropertyImageCategory {
+  return imageType === "façade" ? "facade" : (imageType as PropertyImageCategory);
+}
+
+function mapVisual(image: PropertyImagesRow): PropertyVisual | null {
+  const source = mapSource(image.storage_path, image.external_url);
+
+  if (!source) {
     return null;
   }
+
+  const category = normaliseImageCategory(image.image_type);
+
+  // Every row in property_images is a still. A drone *photograph* belongs
+  // here; drone *footage* is a link and lives in property_resources. The
+  // previous mapping sent `drone` to "drone-video" and then required an
+  // external URL, which silently discarded every uploaded drone photograph.
+  const kind: PropertyVisual["kind"] =
+    category === "floor_plan" ? "floorplan" : "photo";
 
   return {
     id: image.id,
     kind,
-    path: image.storage_path ?? undefined,
-    externalUrl: image.external_url ?? undefined,
+    source,
+    altText: image.alt_text ?? undefined,
     caption: image.caption ?? undefined,
+    category,
   };
 }
 
+/**
+ * External media: tours and video.
+ *
+ * Hosted documents are handled by `mapDocument`. A row is one or the other,
+ * decided by `resource_type`, so neither function has to guess.
+ */
 function mapResource(resource: PropertyResourcesRow): PropertyVisual | null {
-  if (!resource.url) {
-    return null;
-  }
-
-  const kind =
+  const kind: PropertyVisual["kind"] | null =
     resource.resource_type === "virtual-tour"
       ? "virtual-tour"
-      : resource.resource_type === "drone-footage"
+      : resource.resource_type === "video" ||
+          resource.resource_type === "drone-footage"
         ? "drone-video"
         : null;
 
@@ -192,16 +229,22 @@ function mapResource(resource: PropertyResourcesRow): PropertyVisual | null {
     return null;
   }
 
+  // A tour or video is a link. A storage path here would mean the row was
+  // written wrongly, and treating it as a link would produce a broken embed.
+  if (!resource.url) {
+    return null;
+  }
+
   return {
     id: resource.id,
     kind,
-    externalUrl: resource.url,
-    caption: resource.title,
+    source: { kind: "external", url: resource.url },
+    caption: resource.caption ?? resource.title,
   };
 }
 
 function mapDocument(resource: PropertyResourcesRow): PropertyDocument | null {
-  const kind =
+  const kind: PropertyDocument["kind"] | null =
     resource.resource_type === "floor-plan"
       ? "floorplan"
       : resource.resource_type === "brochure"
@@ -214,29 +257,32 @@ function mapDocument(resource: PropertyResourcesRow): PropertyDocument | null {
     return null;
   }
 
-  // Exactly one source. The caller (`propertyDocuments` in media.ts) resolves
-  // it — no fake storage path is ever passed downstream.
-  if (resource.storage_path) {
-    return {
-      id: resource.id,
-      kind,
-      label: resource.title,
-      path: resource.storage_path,
-      fileSizeLabel: undefined,
-    };
+  const source = mapSource(resource.storage_path, resource.url);
+
+  if (!source) {
+    return null;
   }
 
-  if (resource.url) {
-    return {
-      id: resource.id,
-      kind,
-      label: resource.title,
-      path: resource.url,
-      fileSizeLabel: undefined,
-    };
+  return {
+    id: resource.id,
+    kind,
+    label: resource.title,
+    source,
+    fileSizeLabel: isFiniteNumber(resource.file_size_bytes)
+      ? formatBytes(resource.file_size_bytes)
+      : undefined,
+  };
+}
+
+/** Compact size label for a download link. */
+function formatBytes(bytes: number): string {
+  const megabytes = bytes / (1024 * 1024);
+
+  if (megabytes >= 1) {
+    return `PDF · ${megabytes < 10 ? megabytes.toFixed(1) : Math.round(megabytes)} MB`;
   }
 
-  return null;
+  return `PDF · ${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
 function mapTestimonial(
@@ -261,31 +307,49 @@ function mapTestimonial(
  */
 export function mapPropertyRow(row: PropertyJoinedRow): Property {
   const locationRows = row.property_public_locations ?? [];
-  const visualRows = row.property_images ?? [];
-  const resourceRows = row.property_resources ?? [];
   const testimonialRows = row.property_testimonials ?? [];
 
-  const heroImage = visualRows.find(
-    (image) => image.image_type === "hero" && image.storage_path,
+  /*
+    Unpublished media is filtered here as well as by RLS.
+
+    RLS is the control that matters — the anon key cannot read a draft row, so
+    one never reaches this function through the public repository. But this
+    mapper is a pure function that any caller could hand rows to, including a
+    future admin preview built on an authenticated client that *can* see
+    drafts. Filtering here means "draft media never becomes public media" is a
+    property of the mapping itself, not only of who happened to query.
+  */
+  const visualRows = (row.property_images ?? [])
+    .filter((image) => image.is_published)
+    .slice()
+    .sort(bySortOrder);
+
+  const resourceRows = (row.property_resources ?? [])
+    .filter((resource) => resource.is_published)
+    .slice()
+    .sort(bySortOrder);
+
+  // The hero is the row whose category is 'hero' — one per property, enforced
+  // by a partial unique index. Either source kind is acceptable: an
+  // externally hosted hero is as valid as an uploaded one.
+  const heroRow = visualRows.find(
+    (image) => normaliseImageCategory(image.image_type) === "hero",
   );
+  const heroSource = heroRow
+    ? mapSource(heroRow.storage_path, heroRow.external_url)
+    : null;
 
   const visuals = visualRows
     .map(mapVisual)
     .filter((visual): visual is PropertyVisual => visual !== null);
 
-  const mappedResources = resourceRows
-    .slice()
-    .sort(bySortOrder)
+  const linkedMedia = resourceRows
     .map(mapResource)
     .filter((resource): resource is PropertyVisual => resource !== null);
 
-  if (mappedResources.length > 0) {
-    visuals.push(...mappedResources);
-  }
+  visuals.push(...linkedMedia);
 
   const documents = resourceRows
-    .slice()
-    .sort(bySortOrder)
     .map(mapDocument)
     .filter((document): document is PropertyDocument => document !== null);
 
@@ -305,7 +369,14 @@ export function mapPropertyRow(row: PropertyJoinedRow): Property {
     houseSize: isFiniteNumber(row.house_size_sqm)
       ? row.house_size_sqm
       : undefined,
-    imagePath: heroImage?.storage_path ?? undefined,
+    heroImage:
+      heroRow && heroSource
+        ? {
+            id: heroRow.id,
+            source: heroSource,
+            altText: heroRow.alt_text ?? undefined,
+          }
+        : undefined,
     placeholderVariant: placeholderFor(row),
     completionLabel: row.completion_label ?? undefined,
     priceDisplay: row.price_display ?? undefined,

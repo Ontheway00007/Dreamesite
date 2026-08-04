@@ -30,7 +30,14 @@ export function PropertyGallery({ visuals, alt }: PropertyGalleryProps) {
         {active.url ? (
           <Image
             src={active.url}
-            alt={active.caption ?? alt}
+            /*
+              The editor's description first. A caption is written for everyone
+              and often adds context rather than describing the picture — "The
+              kitchen was designed with the owners" tells a screen reader user
+              nothing about what is on screen. The property name and suburb is
+              the last resort, and is at least accurate.
+            */
+            alt={active.altText ?? alt}
             fill
             sizes="(min-width: 1024px) 60rem, 100vw"
             className="object-cover"
@@ -51,7 +58,11 @@ export function PropertyGallery({ visuals, alt }: PropertyGalleryProps) {
               key={visual.id}
               type="button"
               aria-pressed={isActive}
-              aria-label={visual.caption ?? `Show image ${index + 1}`}
+              aria-label={
+                visual.altText
+                  ? `Show ${visual.altText}`
+                  : `Show image ${index + 1} of ${visuals.length}`
+              }
               onClick={() => setActiveIndex(index)}
               className={cn(
                 "bg-background-alt relative aspect-4/3 w-24 overflow-hidden rounded-lg border transition-colors duration-(--duration-fast) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--ring)",

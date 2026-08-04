@@ -14,7 +14,8 @@ import { RelatedProperties } from "@/components/property/detail/related-properti
 import { Button } from "@/components/ui/button";
 import { Eyebrow, Heading, Text } from "@/components/ui/typography";
 import { propertyStatusTokens } from "@/lib/design/property-status";
-import { propertyMediaUrl } from "@/lib/images/property-image";
+import { floorPlanVisuals, heroImageUrl } from "@/lib/properties/media";
+import { PropertyFloorPlans } from "@/components/property/detail/property-floor-plans";
 import { env } from "@/lib/env";
 import {
   descriptionBlocks,
@@ -67,7 +68,7 @@ export async function generateMetadata({
 
   // The architectural drawing is not a photograph of the home, so it is left
   // out of the Open Graph image rather than shared as if it were one.
-  const imageUrl = propertyMediaUrl(property.imagePath);
+  const imageUrl = heroImageUrl(property);
 
   return {
     title: `${property.name}, ${property.suburb}`,
@@ -127,6 +128,11 @@ export default async function PropertyPage({ params }: PropertyPageProps) {
 
   const related = await getRelatedProperties(slug);
   const hasTestimonials = (property.testimonials ?? []).length > 0;
+  // Only counts plans whose file actually resolves, so the section never
+  // appears as an empty heading.
+  const hasFloorPlans = floorPlanVisuals(property).some(
+    (plan) => plan.url !== null,
+  );
 
   return (
     <Container width="content" className="pt-(--header-height)">
@@ -167,6 +173,18 @@ export default async function PropertyPage({ params }: PropertyPageProps) {
       >
         <PropertyProgress property={property} />
       </DetailSection>
+
+      {/* Floor plans sit between the measurements and the location: they
+          answer "how does it lay out?", which follows on from the figures. */}
+      {hasFloorPlans ? (
+        <DetailSection
+          eyebrow="Floor plan"
+          title="How the home is arranged."
+          description="Drawn to the plan for this home."
+        >
+          <PropertyFloorPlans property={property} />
+        </DetailSection>
+      ) : null}
 
       <DetailSection
         eyebrow="Location"

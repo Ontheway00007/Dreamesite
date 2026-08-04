@@ -10,13 +10,26 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * exists yet — the architecture is ready for Phase 7.
  */
 
+/**
+ * Actions the audit trail records.
+ *
+ * Mirrors the `audit_log_action_check` constraint, widened by migration 0009
+ * with the media verbs. Media events get their own names rather than being
+ * folded into `updated` because "who replaced the hero photograph" is a
+ * question worth being able to answer directly.
+ */
 export type AuditAction =
   | "created"
   | "updated"
   | "published"
   | "unpublished"
   | "deleted"
-  | "archived";
+  | "archived"
+  | "uploaded"
+  | "replaced"
+  | "reordered"
+  | "hero_set"
+  | "link_added";
 
 export interface AuditEntry {
   readonly action: AuditAction;
