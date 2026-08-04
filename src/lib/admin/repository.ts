@@ -182,6 +182,15 @@ export interface AdminPropertyDetail {
   readonly property: PropertiesRow;
   readonly privateLocation: PropertyPrivateLocationsRow | null;
   readonly locationSettings: PropertyLocationSettingsRow | null;
+  /**
+   * When the public projection stopped matching the property it was derived
+   * from, or null when it still matches.
+   *
+   * The projection embeds the suburb and state, so changing either leaves the
+   * stored marker describing the previous one. A trigger records that; the
+   * location editor surfaces it. Saving the location again clears it.
+   */
+  readonly projectionStaleSince: string | null;
 }
 
 /**
@@ -208,19 +217,27 @@ export async function getAdminPropertyById(
 
   const supabase = await createAdminClient();
 
-  const [propertyResult, privateResult, settingsResult] = await Promise.all([
-    supabase.from("properties").select("*").eq("id", id).maybeSingle(),
-    supabase
-      .from("property_private_locations")
-      .select("*")
-      .eq("property_id", id)
-      .maybeSingle(),
-    supabase
-      .from("property_location_settings")
-      .select("*")
-      .eq("property_id", id)
-      .maybeSingle(),
-  ]);
+  const [propertyResult, privateResult, settingsResult, projectionResult] =
+    await Promise.all([
+      supabase.from("properties").select("*").eq("id", id).maybeSingle(),
+      supabase
+        .from("property_private_locations")
+        .select("*")
+        .eq("property_id", id)
+        .maybeSingle(),
+      supabase
+        .from("property_location_settings")
+        .select("*")
+        .eq("property_id", id)
+        .maybeSingle(),
+      // One column, because the editor needs the staleness flag and nothing
+      // else from the projection — it derives its own preview.
+      supabase
+        .from("property_public_locations")
+        .select("stale_since")
+        .eq("property_id", id)
+        .maybeSingle(),
+    ]);
 
   if (propertyResult.error) {
     logAdminError(`Loading property ${id}`, propertyResult.error);
@@ -241,12 +258,19 @@ export async function getAdminPropertyById(
     logAdminError(`Loading location settings for ${id}`, settingsResult.error);
   }
 
+  if (projectionResult.error) {
+    logAdminError(`Loading projection staleness for ${id}`, projectionResult.error);
+  }
+
   return {
     property: propertyResult.data as unknown as PropertiesRow,
     privateLocation:
       (privateResult.data as unknown as PropertyPrivateLocationsRow) ?? null,
     locationSettings:
       (settingsResult.data as unknown as PropertyLocationSettingsRow) ?? null,
+    projectionStaleSince:
+      (projectionResult.data as unknown as { stale_since: string | null } | null)
+        ?.stale_since ?? null,
   };
 }
 

@@ -5,6 +5,8 @@ import { Cormorant_Garamond, Inter } from "next/font/google";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteNotice } from "@/components/layout/site-notice";
+import { JsonLd } from "@/components/seo/json-ld";
+import { organisationSchema } from "@/lib/seo/structured-data";
 import { env } from "@/lib/env";
 import { getPublicSettings } from "@/lib/settings/public-settings";
 import { siteConfig } from "@/lib/site-config";
@@ -94,6 +96,20 @@ export default async function RootLayout({
   return (
     <html lang="en-AU" className={`${inter.variable} ${cormorant.variable}`}>
       <body className="grain min-h-dvh antialiased">
+        {/*
+          The business, once, on every page. Search engines resolve the `@id`
+          reference each property page makes to it, so a property does not have
+          to repeat the company details.
+        */}
+        <JsonLd
+          data={organisationSchema({
+            companyName: settings.companyName,
+            contactEmail: settings.contactEmail,
+            contactPhone: settings.contactPhone,
+            addressDisplay: settings.addressDisplay,
+            social: settings.social,
+          })}
+        />
         <AppProviders>
           <a
             href="#main"

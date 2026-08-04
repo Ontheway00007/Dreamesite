@@ -23,6 +23,11 @@ interface Props {
   propertyId?: string;
   privateLocation?: PropertyPrivateLocationsRow;
   locationSettings?: PropertyLocationSettingsRow;
+  /**
+   * When the published projection stopped matching the property it was derived
+   * from — a changed suburb, state or name — or null when it still matches.
+   */
+  projectionStaleSince?: string | null;
   /** Called after a successful save so the parent can refresh readiness. */
   onSaved?: () => void;
 }
@@ -49,6 +54,7 @@ export function LocationEditor({
   propertyId,
   privateLocation,
   locationSettings,
+  projectionStaleSince = null,
   onSaved,
 }: Props) {
   const [isPending, startTransition] = useTransition();
@@ -170,6 +176,27 @@ export function LocationEditor({
         <AdminAlert tone="success" title="Location saved">
           <p className="mt-1">
             The public marker has been regenerated from these settings.
+          </p>
+        </AdminAlert>
+      )}
+
+      {/*
+        The published marker is derived from the property's suburb, state and
+        name as well as these settings, so changing any of them leaves the marker
+        describing the previous version. The privacy algorithm lives in
+        TypeScript and cannot be re-run from a database trigger, so the database
+        records that it is out of date and this says so. Saving clears it.
+      */}
+      {projectionStaleSince && !saved && (
+        <AdminAlert
+          tone="warning"
+          title="The published location is out of date"
+        >
+          <p className="mt-1">
+            This property&rsquo;s suburb, state or name changed after the
+            location was last saved, so the public marker and any address label
+            still describe the previous details. Save this tab again to
+            regenerate them — nothing else needs to change.
           </p>
         </AdminAlert>
       )}

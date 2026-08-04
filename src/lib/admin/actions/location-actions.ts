@@ -106,7 +106,7 @@ export async function saveLocationAction(
 
   const { data: propertyData, error: propertyError } = await supabase
     .from("properties")
-    .select("name, suburb, state, slug")
+    .select("name, suburb, state, slug, updated_at")
     .eq("id", propertyId)
     .maybeSingle();
 
@@ -133,6 +133,7 @@ export async function saveLocationAction(
     suburb: string;
     state: string;
     slug: string;
+    updated_at: string;
   };
 
   /* --- Derive the projection with the canonical pipeline -------------- */
@@ -192,8 +193,20 @@ export async function saveLocationAction(
 
   /* --- One transactional call ---------------------------------------- */
 
+  /*
+    The projection below was derived from `property` — its suburb, state and
+    name. That read is not inside the RPC's lock, so another administrator can
+    change any of them before this call commits, and the projection would
+    describe a property that no longer exists in that form.
+
+    Passing the `updated_at` that was read closes it: the function re-reads the
+    row under the lock and refuses with PT409 if it has moved. Optimistic
+    concurrency rather than a longer lock — the derivation happens in TypeScript
+    and cannot be pulled inside the transaction.
+  */
   const { error: rpcError } = await callRpc(supabase, "save_property_location", {
     p_property_id: propertyId,
+    p_expected_property_updated_at: property.updated_at,
     p_private_latitude: input.privateLatitude,
     p_private_longitude: input.privateLongitude,
     p_house_number: input.houseNumber ?? null,

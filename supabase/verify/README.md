@@ -1,6 +1,6 @@
 # Migration verification harness
 
-SQL that asserts what migrations `0001`–`0011` claim: constraints hold, the
+SQL that asserts what migrations `0001`–`0012` claim: constraints hold, the
 helper functions behave, the storage path validator refuses traversal, hero
 selection is unique and atomic, reordering rejects foreign ids, and `audit_log`
 is genuinely append-only.
@@ -14,7 +14,7 @@ Two check files, run in order:
 | `03_checks_phase631.sql` | Migration `0011`, single-session |
 | `04_concurrency.sh` | Migration `0011`, two live sessions |
 
-`run-local.sh` runs the first three. `04_concurrency.sh` is separate because it
+`run-local.sh` runs the single-session files. `04_concurrency.sh` is separate because it
 builds its own cluster and drives two connections through FIFOs; the shared
 cluster setup lives in `_cluster.sh` so the two cannot apply different
 migrations.
@@ -151,6 +151,28 @@ Added by `03_checks_phase631.sql` and `04_concurrency.sh` for migration `0011`:
 - **Two different properties do not contend**: one publishes while the other's
   lock is held, under a 4-second statement timeout that would fail if the locks
   were global.
+
+Added by `05_checks_phase632.sql` and `04_concurrency.sh` §4 for migration `0012`:
+
+- Direct INSERT, UPDATE and DELETE on all three location tables are denied to an
+  administrator's own role, while SELECT still works and the RPCs still write.
+- `anon` can read the public projection and neither private table.
+- `save_property_location` refuses a stale property version with `PT409`, and a
+  refused save leaves the projection untouched.
+- Changing a property's suburb flags the projection stale; an unrelated change
+  does not; saving the location clears it.
+- `save_regenerated_public_location` refuses versions superseded by a privacy
+  change, and a `hidden` property keeps its null coordinate.
+- `clear_property_location` refuses a nonexistent property and audits nothing.
+- A successful hero promotion writes exactly one `hero_set` row; refused and
+  rolled-back promotions write none.
+- Reordering writes an audit row, and a colliding `sort_order` is moved to the
+  end of its group.
+- Lock helpers refuse a non-administrator; `lock_group_internal` is granted to
+  nobody.
+- Every SECURITY DEFINER function added by `0012` checks `is_admin()`.
+- **Two live sessions**: reorder versus insert, versus delete, versus category
+  change, two simultaneous reorders, and an unrelated group not contending.
 
 **Not** covered:
 

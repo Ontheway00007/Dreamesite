@@ -30,7 +30,7 @@ cluster_migrate
 
 PSQL="psql -v ON_ERROR_STOP=1 -h $CLUSTER_SOCK -U postgres -d verify -X -q"
 
-for checks in 01_checks 02_checks_phase63 03_checks_phase631; do
+for checks in 01_checks 02_checks_phase63 03_checks_phase631 05_checks_phase632; do
   echo ""
   echo "--- $checks.sql"
   as_pg "$PSQL -f $REPO/supabase/verify/$checks.sql"

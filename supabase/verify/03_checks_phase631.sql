@@ -445,6 +445,7 @@ begin
   -- Give property 3 a complete location so it can be published.
   perform public.save_property_location(
     '33333333-3333-4333-8333-333333333333',
+    null,  -- version check skipped: this fixture derives from data it just wrote
     -37.53, 144.90, '10', 'Example Street', '3064',
     'approximate', 500, 'automatic', null, null, null,
     false, false, true, true, false,

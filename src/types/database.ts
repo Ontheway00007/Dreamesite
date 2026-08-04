@@ -117,6 +117,11 @@ export interface PropertyPublicLocationsRow {
   accuracy_note: string | null;
   allow_directions: boolean;
   generated_at: string;
+  /**
+   * Set when a property field the projection derives from changed after this
+   * row was generated. Added by 0012; cleared by saving the location again.
+   */
+  stale_since: string | null;
 }
 
 export interface SuburbReferencesRow {
@@ -422,9 +427,34 @@ export interface Database {
        * settings, the derived public projection and the audit entry in one
        * transaction. See migration 0008.
        */
+      /** Rewrites only the public projection, version-checked. Added by 0012. */
+      save_regenerated_public_location: {
+        Args: {
+          p_property_id: string;
+          p_expected_property_updated_at: string | null;
+          p_expected_private_updated_at: string | null;
+          p_expected_settings_updated_at: string | null;
+          p_location_visibility: string;
+          p_public_latitude: number | null;
+          p_public_longitude: number | null;
+          p_public_address: string | null;
+          p_marker_mode: string;
+          p_location_label: string | null;
+          p_accuracy_note: string | null;
+          p_allow_directions: boolean;
+        };
+        Returns: void;
+      };
+      /** Ordered-group advisory lock. Admin-only. Added by 0012. */
+      lock_group: {
+        Args: { p_class: string; p_property_id: string; p_group: string };
+        Returns: void;
+      };
       save_property_location: {
         Args: {
           p_property_id: string;
+          /** Optimistic concurrency, added by 0012. Null skips the check. */
+          p_expected_property_updated_at: string | null;
           p_private_latitude: number;
           p_private_longitude: number;
           p_house_number: string | null;

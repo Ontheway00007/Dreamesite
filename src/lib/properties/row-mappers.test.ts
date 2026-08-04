@@ -31,6 +31,7 @@ describe("mapLocationRow", () => {
       accuracy_note: null,
       allow_directions: true,
       generated_at: "2026-08-03T00:00:00Z",
+      stale_since: null,
     });
 
     expect(location.visibility).toBe("exact");
@@ -51,6 +52,7 @@ describe("mapLocationRow", () => {
       accuracy_note: null,
       allow_directions: true, // storage bug — directions must be off
       generated_at: "2026-08-03T00:00:00Z",
+      stale_since: null,
     });
 
     expect(location.allowDirections).toBe(false);
@@ -69,6 +71,7 @@ describe("mapLocationRow", () => {
       accuracy_note: null,
       allow_directions: true,
       generated_at: "2026-08-03T00:00:00Z",
+      stale_since: null,
     });
 
     expect(location.publicLatitude).toBeUndefined();
@@ -242,6 +245,7 @@ describe("mapPropertyRow", () => {
             accuracy_note: null,
             allow_directions: true,
             generated_at: "2026-08-03T00:00:00Z",
+            stale_since: null,
           },
         ],
       }),

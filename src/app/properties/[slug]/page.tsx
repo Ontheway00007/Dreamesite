@@ -15,7 +15,9 @@ import { PropertyTestimonials } from "@/components/property/detail/property-test
 import { RelatedProperties } from "@/components/property/detail/related-properties";
 import { Eyebrow, Heading, Text } from "@/components/ui/typography";
 import { floorPlanVisuals } from "@/lib/properties/media";
+import { JsonLd } from "@/components/seo/json-ld";
 import { propertyMetadata } from "@/lib/seo/metadata";
+import { breadcrumbSchema, residenceSchema } from "@/lib/seo/structured-data";
 import { getPublicSettings } from "@/lib/settings/public-settings";
 import { PropertyFloorPlans } from "@/components/property/detail/property-floor-plans";
 import {
@@ -136,8 +138,25 @@ export default async function PropertyPage({ params }: PropertyPageProps) {
     (group) => group.features.length > 0,
   );
 
+  // Request-cached, so this shares the read with the layout and generateMetadata.
+  const settings = await getPublicSettings();
+
   return (
     <Container width="content" className="pt-(--header-height)">
+      {/*
+        Two documents rather than one graph: they describe different things, and
+        a crawler that rejects one should still get the other. Both contain only
+        what this page displays — see lib/seo/structured-data.ts for what is
+        deliberately absent, and why no coordinate ever appears here.
+      */}
+      <JsonLd
+        data={residenceSchema(property, {
+          defaultMetaTitle: settings.defaultMetaTitle,
+          defaultMetaDescription: settings.defaultMetaDescription,
+          defaultOgImageUrl: settings.defaultOgImageUrl,
+        })}
+      />
+      <JsonLd data={breadcrumbSchema(property)} />
       <div className="py-12 md:py-16">
         <PropertyDetailHero property={property} />
       </div>

@@ -139,6 +139,7 @@ set request.jwt.claim.sub = 'cc000001-0000-4000-8000-000000000001';
 
 select public.save_property_location(
   'a1000000-0000-4000-8000-000000000001',
+  null,
   -37.53, 144.90, '1', 'Example Street', '3064',
   'approximate', 500, 'automatic', null, null, null,
   false, false, true, true, false,
@@ -146,6 +147,7 @@ select public.save_property_location(
 
 select public.save_property_location(
   'a2000000-0000-4000-8000-000000000002',
+  null,
   -37.60, 144.94, '2', 'Example Street', '3064',
   'approximate', 500, 'automatic', null, null, null,
   false, false, true, true, false,
@@ -298,6 +300,189 @@ echo "PASS  a property publishes while an unrelated property's lock is held"
 
 printf "%s\n" "rollback;" "\\echo A-FINAL" >&3
 wait_for a "A-FINAL"
+
+echo ""
+echo "=================== 4. Ordered groups serialise ==================="
+echo ""
+
+# A gallery of three, on property two.
+as_pg "$PSQL -q -v ON_ERROR_STOP=1 -f -" <<'SQL' >/dev/null
+set request.jwt.claim.sub = 'cc000001-0000-4000-8000-000000000001';
+
+insert into public.property_images
+  (id, property_id, image_type, storage_path, alt_text, is_published, sort_order)
+values
+  ('c1000001-0000-4000-8000-000000000001', 'a2000000-0000-4000-8000-000000000002',
+   'gallery', 'properties/a2000000-0000-4000-8000-000000000002/gallery/abcdef01-2345-6789-abcd-ef01234567c1.jpg',
+   'One', true, 0);
+insert into public.property_images
+  (id, property_id, image_type, storage_path, alt_text, is_published, sort_order)
+values
+  ('c1000002-0000-4000-8000-000000000002', 'a2000000-0000-4000-8000-000000000002',
+   'gallery', 'properties/a2000000-0000-4000-8000-000000000002/gallery/abcdef01-2345-6789-abcd-ef01234567c2.jpg',
+   'Two', true, 1);
+insert into public.property_images
+  (id, property_id, image_type, storage_path, alt_text, is_published, sort_order)
+values
+  ('c1000003-0000-4000-8000-000000000003', 'a2000000-0000-4000-8000-000000000002',
+   'gallery', 'properties/a2000000-0000-4000-8000-000000000002/gallery/abcdef01-2345-6789-abcd-ef01234567c3.jpg',
+   'Three', true, 2);
+
+-- A separate group on the same property, to prove groups are independent.
+insert into public.property_images
+  (id, property_id, image_type, storage_path, alt_text, is_published, sort_order)
+values
+  ('c2000001-0000-4000-8000-000000000001', 'a2000000-0000-4000-8000-000000000002',
+   'floor_plan', 'properties/a2000000-0000-4000-8000-000000000002/floor-plans/abcdef01-2345-6789-abcd-ef01234567d1.png',
+   'Ground floor', true, 0);
+SQL
+
+# --- 4a. Reorder versus a concurrent insert --------------------------------
+#
+# A holds the gallery lock by starting a reorder. B tries to add an image to the
+# same group; its insert trigger must wait rather than landing mid-reorder.
+
+printf "%s\n" \
+  "begin;" \
+  "set request.jwt.claim.sub = 'cc000001-0000-4000-8000-000000000001';" \
+  "select public.reorder_property_images('a2000000-0000-4000-8000-000000000002', 'gallery', array['c1000003-0000-4000-8000-000000000003','c1000002-0000-4000-8000-000000000002','c1000001-0000-4000-8000-000000000001']::uuid[]);" \
+  "\\echo A-REORDERED" >&3
+wait_for a "A-REORDERED"
+echo "PASS  session A reordered the gallery and holds the group lock"
+
+printf "%s\n" \
+  "begin;" \
+  "set request.jwt.claim.sub = 'cc000001-0000-4000-8000-000000000001';" \
+  "insert into public.property_images (id, property_id, image_type, storage_path, alt_text, is_published, sort_order) values ('c1000004-0000-4000-8000-000000000004','a2000000-0000-4000-8000-000000000002','gallery','properties/a2000000-0000-4000-8000-000000000002/gallery/abcdef01-2345-6789-abcd-ef01234567c4.jpg','Four',true,3);" \
+  "commit;" \
+  "\\echo B-INSERTED" >&4
+
+assert_blocked_on_advisory_lock "session B inserting into the group being reordered"
+
+printf "%s\n" "commit;" "\\echo A-REORDER-COMMITTED" >&3
+wait_for a "A-REORDER-COMMITTED"
+wait_for b "B-INSERTED"
+
+# The reorder applied, and the insert landed after it rather than inside it.
+order_after=$(query "select string_agg(id::text, ',' order by sort_order) from public.property_images where property_id = 'a2000000-0000-4000-8000-000000000002' and image_type = 'gallery'")
+case "$order_after" in
+  c1000003*,c1000002*,c1000001*,c1000004*) : ;;
+  *) fail "the reorder and the insert interleaved: order is $order_after" ;;
+esac
+echo "PASS  the insert waited, and landed after the reorder"
+
+positions=$(query "select string_agg(distinct sort_order::text, ',' order by sort_order::text) from public.property_images where property_id = 'a2000000-0000-4000-8000-000000000002' and image_type = 'gallery'")
+if [ "$positions" != "0,1,2,3" ]; then
+  fail "positions are not contiguous after the interleaving: $positions"
+fi
+echo "PASS  positions remain contiguous from zero ($positions)"
+
+# --- 4b. Reorder versus a concurrent delete --------------------------------
+
+printf "%s\n" \
+  "begin;" \
+  "set request.jwt.claim.sub = 'cc000001-0000-4000-8000-000000000001';" \
+  "select public.lock_group('property-image', 'a2000000-0000-4000-8000-000000000002', 'gallery');" \
+  "\\echo A-HOLDS-GALLERY" >&3
+wait_for a "A-HOLDS-GALLERY"
+
+printf "%s\n" \
+  "begin;" \
+  "set request.jwt.claim.sub = 'cc000001-0000-4000-8000-000000000001';" \
+  "delete from public.property_images where id = 'c1000004-0000-4000-8000-000000000004';" \
+  "commit;" \
+  "\\echo B-DELETED" >&4
+
+assert_blocked_on_advisory_lock "session B deleting from a locked group"
+
+printf "%s\n" "rollback;" "\\echo A-RELEASED" >&3
+wait_for a "A-RELEASED"
+wait_for b "B-DELETED"
+echo "PASS  a delete waits for the group lock"
+
+# --- 4c. Reorder versus a category change ---------------------------------
+#
+# Moving an image between groups locks both, so it must wait for either.
+
+printf "%s\n" \
+  "begin;" \
+  "set request.jwt.claim.sub = 'cc000001-0000-4000-8000-000000000001';" \
+  "select public.lock_group('property-image', 'a2000000-0000-4000-8000-000000000002', 'floor_plan');" \
+  "\\echo A-HOLDS-PLANS" >&3
+wait_for a "A-HOLDS-PLANS"
+
+printf "%s\n" \
+  "begin;" \
+  "set request.jwt.claim.sub = 'cc000001-0000-4000-8000-000000000001';" \
+  "update public.property_images set image_type = 'floor_plan' where id = 'c1000001-0000-4000-8000-000000000001';" \
+  "commit;" \
+  "\\echo B-RECATEGORISED" >&4
+
+assert_blocked_on_advisory_lock "session B moving an image into a locked group"
+
+printf "%s\n" "rollback;" "\\echo A-RELEASED-PLANS" >&3
+wait_for a "A-RELEASED-PLANS"
+wait_for b "B-RECATEGORISED"
+echo "PASS  a category change waits for the destination group's lock"
+
+# It arrived at the end of the destination group, not on top of the plan
+# already there.
+plan_positions=$(query "select string_agg(distinct sort_order::text, ',' order by sort_order::text) from public.property_images where property_id = 'a2000000-0000-4000-8000-000000000002' and image_type = 'floor_plan'")
+if [ "$plan_positions" != "0,1" ]; then
+  fail "the moved image collided in its new group: positions $plan_positions"
+fi
+echo "PASS  the moved image took the next free position ($plan_positions)"
+
+# --- 4d. Two simultaneous reorders ----------------------------------------
+
+printf "%s\n" \
+  "begin;" \
+  "set request.jwt.claim.sub = 'cc000001-0000-4000-8000-000000000001';" \
+  "select public.lock_group('property-image', 'a2000000-0000-4000-8000-000000000002', 'gallery');" \
+  "\\echo A-HOLDS-AGAIN" >&3
+wait_for a "A-HOLDS-AGAIN"
+
+printf "%s\n" \
+  "begin;" \
+  "set request.jwt.claim.sub = 'cc000001-0000-4000-8000-000000000001';" \
+  "select public.reorder_property_images('a2000000-0000-4000-8000-000000000002', 'gallery', array['c1000002-0000-4000-8000-000000000002','c1000003-0000-4000-8000-000000000003']::uuid[]);" \
+  "commit;" \
+  "\\echo B-SECOND-REORDER" >&4
+
+assert_blocked_on_advisory_lock "session B reordering a group already locked"
+
+printf "%s\n" "rollback;" "\\echo A-DONE-AGAIN" >&3
+wait_for a "A-DONE-AGAIN"
+wait_for b "B-SECOND-REORDER"
+echo "PASS  a second reorder of the same group waits for the first"
+
+# --- 4e. Independent groups do not contend --------------------------------
+
+printf "%s\n" \
+  "begin;" \
+  "set request.jwt.claim.sub = 'cc000001-0000-4000-8000-000000000001';" \
+  "select public.lock_group('property-image', 'a2000000-0000-4000-8000-000000000002', 'gallery');" \
+  "\\echo A-HOLDS-GALLERY-3" >&3
+wait_for a "A-HOLDS-GALLERY-3"
+
+printf "%s\n" \
+  "begin;" \
+  "set local statement_timeout = '4s';" \
+  "set request.jwt.claim.sub = 'cc000001-0000-4000-8000-000000000001';" \
+  "insert into public.property_features (id, property_id, category, label, sort_order) values ('c3000001-0000-4000-8000-000000000001','a2000000-0000-4000-8000-000000000002','energy','Independent group',0);" \
+  "commit;" \
+  "\\echo B-OTHER-GROUP" >&4
+wait_for b "B-OTHER-GROUP"
+
+if grep -qF "canceling statement due to statement timeout" "$WORK/b.out"; then
+  echo "Session B output:"
+  cat "$WORK/b.out"
+  fail "an unrelated group blocked on the gallery lock"
+fi
+echo "PASS  a different group is unaffected by the gallery lock"
+
+printf "%s\n" "rollback;" "\\echo A-GROUPS-DONE" >&3
+wait_for a "A-GROUPS-DONE"
 
 # ----------------------------------------------------------------------
 

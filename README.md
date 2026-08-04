@@ -326,6 +326,66 @@ public visibility are the publish and unpublish actions. A form that could
 publish would need its own readiness check, and that check would have the same
 gap the RPC exists to close.
 
+### Location writes are RPC-only
+
+The three location tables — `property_private_locations`,
+`property_location_settings`, `property_public_locations` — accept **no direct
+writes**. Migration 0012 drops the admin INSERT/UPDATE/DELETE policies and
+revokes the grants. SELECT stays, because the admin location tab reads all three.
+
+Nothing in the application ever wrote them directly. But the reason nothing did
+was convention, and a policy is not a convention: `supabase.from(
+'property_location_settings').update(...)` was a legal way to change a
+property's privacy, bypassing the property lock, the atomic three-table write,
+the derived projection, the audit entry, and the unpublish that has to follow
+removal.
+
+Removing the grants means the writing functions can no longer be SECURITY
+INVOKER — an invoker function has exactly the caller's privileges, and the caller
+now has none. `save_property_location`, `clear_property_location` and
+`save_regenerated_public_location` are SECURITY DEFINER, which is the point: the
+function *is* the privilege. Each checks `is_admin()` before doing anything and
+pins its `search_path`, and the harness asserts both.
+
+### The projection cannot be regenerated from stale data
+
+`generatePublicLocationForProperty` used to read the property, the private
+location and the settings with the **service role**, compute the projection, and
+upsert it unconditionally. Three problems, worst last:
+
+1. Nothing called it — privileged code with no caller.
+2. The service role bypasses RLS.
+3. A location save committing between the read and the write was silently undone.
+   The direction of that failure is the worst available: an administrator setting
+   visibility to `hidden` could have the previous public coordinate *restored* by
+   a background job, with no error anywhere.
+
+It is now `regeneratePublicLocation`, and it runs as the signed-in administrator.
+All three `updated_at` values are read and passed to
+`save_regenerated_public_location`, which takes the property lock, confirms none
+has moved, and refuses with `PT409` otherwise. Only the projection is written —
+regeneration must never alter the stored position or the settings, which are input
+rather than derived output.
+
+**The service-role key is no longer used by any module.** `.env.example` says so
+and asks for it to be left unset.
+
+### A projection can go stale, and says so
+
+The projection embeds the property's suburb and state, so changing either leaves
+the stored marker describing the previous one. That is wrong public data — not a
+privacy leak, since the coordinate is still the privacy-correct one, but a marker
+in the wrong place.
+
+Recomputing from a trigger is impossible: the privacy algorithm lives in
+TypeScript and is deliberately not duplicated in SQL. So a trigger records
+`stale_since` and the location tab says the published location is out of date.
+Saving clears it.
+
+It deliberately does **not** block publishing. Making an administrator unable to
+publish because they renamed a property would be disproportionate to a stale
+label.
+
 ### Property locking
 
 The row lock alone was not enough. Readiness spans three tables, and you cannot
@@ -556,6 +616,37 @@ A duplicate is always a draft, never featured, and never a display home. The
 button says what is and is not copied.
 
 ### Reordering
+
+Every mutation of an ordered group is serialised **by trigger**, not by
+convention. `serialise_group_mutation` fires before insert, update and delete on
+all four grouped tables and takes the group's advisory lock:
+
+```
+property-image:<property>:<image_type>
+property-resource:<property>:<resource_type>
+construction:<property>
+feature:<property>:<category>
+```
+
+A trigger rather than four more call sites, because only reorder is an RPC — the
+others are ordinary PostgREST writes, and there is no way to make a PostgREST
+insert take an advisory lock. It is also the lesson from 0011 applied: a lock is
+only as good as everyone remembering it, and a trigger cannot be forgotten.
+
+A row moving between groups locks both, always in ascending key order, so two
+opposite moves cannot deadlock. A row *arriving* in a group takes the next free
+position — the position it held in its old group is meaningless, and a colliding
+insert (two administrators creating at once, both having read the same maximum)
+goes to the end rather than sharing a number.
+
+Collision resolution deliberately does not apply to an update that only changes
+`sort_order` within a group, because that is what reorder does: a permutation
+passes through intermediate states where two rows briefly share a position, and
+"resolving" those would rewrite the order being applied.
+
+Verified with two live sessions: reorder versus insert, versus delete, versus
+category change, two simultaneous reorders, and independent groups not
+contending.
 
 All four reorder functions — images, resources, construction updates, features —
 require the **complete group**, not just a valid subset of it.
@@ -993,6 +1084,83 @@ It reads three narrow projections and aggregates them in one pass, rather than
 issuing a query per property. The row cap is explicit: past it, the page says the
 totals are partial instead of quietly under-reporting.
 
+
+## Technical SEO
+
+| Route | What it does |
+| --- | --- |
+| `/robots.txt` | Allows the public site, disallows `/admin` and `/api/`, advertises the sitemap. **Disallows everything on a preview deployment.** |
+| `/sitemap.xml` | The two static routes plus every published, indexable property. Revalidates hourly. |
+
+`robots.txt` uses the same `env.isIndexable` flag as the root layout's `robots`
+metadata, so the two cannot disagree. Disallowing `/admin` is belt-and-braces
+over the `noindex` the admin layout already sends: a `noindex` only works after
+the page has been fetched, so a crawler still spends budget discovering that a
+private area exists.
+
+The sitemap lists only published properties, and drops any carrying their own
+`noindex` — a URL in the sitemap while asking search engines not to index it is a
+contradiction, and the sitemap is the half that says "please index this". It reads
+through `getSitemapEntries()`, four columns, rather than `getProperties()` and its
+full detail graph: the sitemap uses a slug and a timestamp, so fetching images,
+features and testimonials hourly to discard them would be waste.
+
+`lastModified` comes from the property's own `updated_at`. Emitting "now" for
+every entry on every crawl is the tempting shortcut and it teaches the crawler to
+ignore the field.
+
+### Structured data
+
+Three JSON-LD documents: `HomeAndConstructionBusiness` on every page (once, in the
+root layout), and `SingleFamilyResidence` plus `BreadcrumbList` on each property.
+Properties reference the organisation by `@id` rather than repeating it.
+
+**Every claim is visible on the page it describes.** Deliberately absent:
+
+| Not emitted | Why |
+| --- | --- |
+| `aggregateRating`, `review` | There are no reviews. A rating with nothing behind it is the most common structured-data abuse. |
+| `offers`, `price` | `price_display` is free text — "From $780,000", "Contact agent". Parsing a number out of marketing copy to satisfy a schema invents a commitment. |
+| `geo`, `latitude`, `longitude` | **A privacy decision.** The projection blurs, relocates or omits a position by design; publishing a coordinate in JSON-LD would republish that decision in the most scrapable form there is. |
+| `datePosted`, `availabilityStarts` | Nothing records them. |
+| `foundingDate`, `numberOfEmployees`, `award` | A builder's credibility markers are exactly the fields that must not be guessed at. |
+
+`SingleFamilyResidence` rather than `Product`, because `Product` invites the price
+and rating fields that must stay empty. The address is suburb-level only, which is
+the precision the site commits to everywhere else. Measurements carry units and
+are omitted rather than defaulted, because `0` in a schema means zero, not unknown.
+
+`serialiseJsonLd` escapes `<`, so a `</script>` in an administrator-written
+description cannot close the tag and turn the rest of the payload into markup.
+
+## Third-party embeds
+
+A YouTube or Vimeo resource becomes a player. Anything else — Matterport, Kuula, a
+builder's own viewer — becomes a link.
+
+**The `iframe src` is never a URL somebody typed.** `resolveEmbed` recognises the
+host against an exact allow-list, extracts an id, and *constructs* the embed URL.
+The alternative — a `startsWith` check on the stored URL — fails to
+`youtube.com.attacker.example`, to a `javascript:` scheme, and to any query
+parameter the administrator pasted. Here, every parameter is discarded and an
+unrecognised provider produces no iframe at all.
+
+Privacy and loading:
+
+- YouTube goes through `youtube-nocookie.com`; Vimeo gets `dnt=1`.
+- Nothing loads until the visitor clicks. `loading="lazy"` defers by viewport
+  position, so a visitor who scrolls past still pays; consent is the better
+  trigger. A property page with a tour and drone footage makes **zero**
+  third-party requests until somebody wants one — asserted in
+  `scripts/verify-public-pages.sh`.
+- An unlisted Vimeo video's privacy hash is not carried into the embed, because
+  that would publish it in the page source.
+- The frame is sandboxed to what a player needs. No `allow-top-navigation`, so it
+  cannot redirect the page around it; no camera, microphone or geolocation.
+  `referrerPolicy="strict-origin"` tells the provider the site, not which property
+  is being viewed.
+- Every embed has an "Open on …" fallback for a browser or extension that blocks
+  the frame.
 
 ## Caching
 

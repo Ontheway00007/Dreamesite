@@ -66,6 +66,7 @@ export default async function EditPropertyPage({ params }: Props) {
         initialData={detail.property}
         privateLocation={detail.privateLocation}
         locationSettings={detail.locationSettings}
+        projectionStaleSince={detail.projectionStaleSince}
         publishBlockers={publishBlockers}
         media={media}
         content={content}

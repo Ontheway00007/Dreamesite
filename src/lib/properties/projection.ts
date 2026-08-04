@@ -81,7 +81,7 @@ export function buildPublicLocation(
 export function toPublicLocationRow(
   propertyId: string,
   location: PublicPropertyLocation,
-): Omit<PropertyPublicLocationsRow, "generated_at"> {
+): Omit<PropertyPublicLocationsRow, "generated_at" | "stale_since"> {
   return {
     property_id: propertyId,
     location_visibility: location.visibility,

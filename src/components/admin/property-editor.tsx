@@ -38,6 +38,8 @@ interface Props {
   initialData?: PropertiesRow;
   privateLocation?: PropertyPrivateLocationsRow | null;
   locationSettings?: PropertyLocationSettingsRow | null;
+  /** When the published projection stopped matching the property, if it has. */
+  projectionStaleSince?: string | null;
   /** Reasons this property cannot be published, from the database. */
   publishBlockers?: readonly string[];
   /** Every image and resource on this property, drafts included. */
@@ -73,6 +75,7 @@ export function PropertyEditor({
   initialData,
   privateLocation,
   locationSettings,
+  projectionStaleSince = null,
   publishBlockers = [],
   media,
   content,
@@ -640,6 +643,7 @@ export function PropertyEditor({
           propertyId={propertyId}
           privateLocation={privateLocation ?? undefined}
           locationSettings={locationSettings ?? undefined}
+          projectionStaleSince={projectionStaleSince}
           onSaved={() => {
             // Saving a location can clear a publish blocker, so refresh the
             // server data that produced the warning above.
