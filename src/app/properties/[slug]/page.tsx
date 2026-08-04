@@ -16,6 +16,7 @@ import { RelatedProperties } from "@/components/property/detail/related-properti
 import { Eyebrow, Heading, Text } from "@/components/ui/typography";
 import { floorPlanVisuals } from "@/lib/properties/media";
 import { propertyMetadata } from "@/lib/seo/metadata";
+import { getPublicSettings } from "@/lib/settings/public-settings";
 import { PropertyFloorPlans } from "@/components/property/detail/property-floor-plans";
 import {
   descriptionBlocks,
@@ -61,8 +62,17 @@ export async function generateMetadata({
   }
 
   // The whole chain — administrator override, then the property's own content,
-  // then the site default — lives in lib/seo/metadata.ts.
-  return propertyMetadata(property);
+  // then the site default — lives in lib/seo/metadata.ts. The site-wide level is
+  // passed in rather than read there, so the resolver stays a pure function.
+  // `getPublicSettings` is request-cached, so this shares the read with the
+  // layout and the page body.
+  const settings = await getPublicSettings();
+
+  return propertyMetadata(property, {
+    defaultMetaTitle: settings.defaultMetaTitle,
+    defaultMetaDescription: settings.defaultMetaDescription,
+    defaultOgImageUrl: settings.defaultOgImageUrl,
+  });
 }
 
 /** Section wrapper, so the rhythm of the page is defined in one place. */

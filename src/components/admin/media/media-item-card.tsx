@@ -31,6 +31,7 @@ import {
   uploadToStorage,
 } from "@/lib/media/browser-upload";
 import { categoryForImageType } from "@/lib/media/config";
+import { checkHeroEligibility } from "@/lib/media/validation";
 import { Field } from "@/components/admin/form-controls";
 import { AdminAlert } from "@/components/admin/admin-alert";
 
@@ -83,6 +84,37 @@ function moved(
   [next[index], next[target]] = [next[target], next[index]];
 
   return next;
+}
+
+/**
+ * Why this image cannot be the main one yet, or null when it can.
+ *
+ * Derived from `checkHeroEligibility` so there is one rule, not a second copy
+ * of it in the UI. Only the first reason is shown — the control is a few words
+ * wide, and an administrator fixing one thing at a time is fine here.
+ */
+function heroBlockedReason(item: AdminMediaItem): string | null {
+  const eligibility = checkHeroEligibility({
+    imageType: item.imageType,
+    hasSource: item.source !== null,
+    altText: item.altText,
+    isPublished: item.isPublished,
+  });
+
+  if (eligibility.ok) {
+    return null;
+  }
+
+  const first = eligibility.errors[0];
+
+  switch (first.field) {
+    case "isPublished":
+      return "Publish to use as main image";
+    case "altText":
+      return "Add alt text to use as main image";
+    default:
+      return null;
+  }
 }
 
 export function MediaItemCard(props: Props) {
@@ -200,14 +232,33 @@ export function MediaItemCard(props: Props) {
               {isEditing ? "Close details" : "Edit details"}
             </ActionButton>
 
-            {isImage && props.canBeHero && !props.isHero && (
-              <ActionButton
-                onClick={() => run(() => setHeroImage(propertyId, id))}
-                disabled={isPending}
-              >
-                Make main image
-              </ActionButton>
-            )}
+            {/*
+              Offered only when it would actually work.
+
+              A hero must be a published, described photograph — the same five
+              conditions `checkHeroEligibility` and `set_property_hero_image`
+              both enforce. Offering the button on a draft and then refusing the
+              click teaches an administrator that the button is unreliable; the
+              title says what to fix instead.
+            */}
+            {isImage &&
+              props.canBeHero &&
+              !props.isHero &&
+              (heroBlockedReason(props.item) ? (
+                <span
+                  className="text-foreground-subtle text-xs"
+                  title={heroBlockedReason(props.item) ?? undefined}
+                >
+                  {heroBlockedReason(props.item)}
+                </span>
+              ) : (
+                <ActionButton
+                  onClick={() => run(() => setHeroImage(propertyId, id))}
+                  disabled={isPending}
+                >
+                  Make main image
+                </ActionButton>
+              ))}
 
             {props.item.source.kind === "storage" && isImage && (
               <ReplaceButton

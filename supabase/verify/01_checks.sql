@@ -266,7 +266,7 @@ begin
     );
     raise exception 'CHECK FAILED: an image from another property was made hero';
   exception
-    when check_violation then
+    when sqlstate 'PT422' then
       raise notice 'PASS  set_property_hero_image refuses an image from another property';
   end;
 end $$;
@@ -320,7 +320,7 @@ begin
     );
     raise exception 'CHECK FAILED: reorder accepted an id from another property';
   exception
-    when check_violation then
+    when sqlstate 'PT422' then
       raise notice 'PASS  reorder refuses an id from another property';
   end;
 end $$;
@@ -337,7 +337,7 @@ begin
     );
     raise exception 'CHECK FAILED: reorder accepted an id from another category';
   exception
-    when check_violation then
+    when sqlstate 'PT422' then
       raise notice 'PASS  reorder refuses an id from another category';
   end;
 end $$;
@@ -354,7 +354,7 @@ begin
     );
     raise exception 'CHECK FAILED: reorder accepted a duplicate id';
   exception
-    when check_violation then
+    when sqlstate 'PT422' then
       raise notice 'PASS  reorder refuses a duplicate id';
   end;
 end $$;

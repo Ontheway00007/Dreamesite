@@ -469,4 +469,33 @@ describe("mapPropertyRow", () => {
       "third",
     ]);
   });
+
+  it("breaks a sort_order tie by id, so the order never shuffles between requests", () => {
+    // Positions should be unique within a group — the reorder RPCs rewrite the
+    // whole group and refuse a partial list — but a row inserted directly, or
+    // data predating that rule, can tie. Without a tiebreaker the two come back
+    // in whatever order PostgreSQL produces, and a gallery appears to shuffle
+    // itself between page loads.
+    const rows = [
+      imageRow({ id: "ccc", storage_path: "c.jpg", sort_order: 1 }),
+      imageRow({ id: "aaa", storage_path: "a.jpg", sort_order: 1 }),
+      imageRow({ id: "bbb", storage_path: "b.jpg", sort_order: 1 }),
+    ];
+
+    const first = mapPropertyRow(propertyRow({ property_images: rows }));
+    const reversed = mapPropertyRow(
+      propertyRow({ property_images: [...rows].reverse() }),
+    );
+
+    expect(first.visuals?.map((visual) => visual.id)).toEqual([
+      "aaa",
+      "bbb",
+      "ccc",
+    ]);
+
+    // Same rows in a different arrival order must produce the same result.
+    expect(reversed.visuals?.map((visual) => visual.id)).toEqual(
+      first.visuals?.map((visual) => visual.id),
+    );
+  });
 });

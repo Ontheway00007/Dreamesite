@@ -29,6 +29,19 @@ const baseProperty = {
   images: [],
 } as unknown as Property;
 
+/**
+ * An externally hosted hero, so the resolved URL is the literal below and the
+ * test does not depend on Supabase configuration.
+ */
+const HERO_URL = "https://cdn.example.com/hero.jpg";
+
+const HERO_IMAGE = {
+  id: "hero-1",
+  category: "hero",
+  source: { kind: "external", url: HERO_URL },
+  altText: "Street view",
+} as unknown as Property["heroImage"];
+
 function withSeo(seo: Partial<PropertySeo> | undefined): Property {
   return {
     ...baseProperty,
@@ -132,9 +145,86 @@ describe("resolvePropertyMetadata", () => {
     expect(resolved.imageUrl).toBe("https://cdn.example.com/chosen.jpg");
   });
 
-  it("has no image at all rather than a generic one", () => {
-    // No hero and no override: the result must be undefined, not a site banner.
-    expect(resolvePropertyMetadata(withSeo(undefined)).imageUrl).toBeUndefined();
+  it("has no image when nothing supplies one", () => {
+    // No override, no hero, no site default: no image, not an invented one.
+    const resolved = resolvePropertyMetadata(withSeo(undefined));
+
+    expect(resolved.imageUrl).toBeUndefined();
+    expect(resolved.imageSource).toBe("none");
+  });
+});
+
+/* ---------------------------------------------------------------------- */
+/* Level 3 — the site-wide default                                        */
+/* ---------------------------------------------------------------------- */
+
+const SITE_DEFAULTS = {
+  defaultMetaTitle: "Dreame — considered homes",
+  defaultMetaDescription: "A site-wide description.",
+  defaultOgImageUrl: "https://cdn.example.com/site-banner.jpg",
+};
+
+describe("the site-wide default level", () => {
+  it("uses the configured default image when the property has none", () => {
+    const resolved = resolvePropertyMetadata(withSeo(undefined), SITE_DEFAULTS);
+
+    expect(resolved.imageUrl).toBe(SITE_DEFAULTS.defaultOgImageUrl);
+    expect(resolved.imageSource).toBe("site-default");
+  });
+
+  it("prefers the property hero over the site default", () => {
+    const resolved = resolvePropertyMetadata(
+      { ...withSeo(undefined), heroImage: HERO_IMAGE } as Property,
+      SITE_DEFAULTS,
+    );
+
+    expect(resolved.imageUrl).toBe(HERO_URL);
+    expect(resolved.imageSource).toBe("hero");
+  });
+
+  it("prefers the property override over both", () => {
+    const resolved = resolvePropertyMetadata(
+      {
+        ...withSeo({ ogImageUrl: "https://cdn.example.com/chosen.jpg" }),
+        heroImage: HERO_IMAGE,
+      } as Property,
+      SITE_DEFAULTS,
+    );
+
+    expect(resolved.imageUrl).toBe("https://cdn.example.com/chosen.jpg");
+    expect(resolved.imageSource).toBe("override");
+  });
+
+  it("falls through to the hero when the override no longer resolves", () => {
+    // A draft, deleted or recategorised override arrives as undefined from the
+    // mapper, which is what makes the fallback automatic.
+    const resolved = resolvePropertyMetadata(
+      { ...withSeo({ ogImageUrl: undefined }), heroImage: HERO_IMAGE } as Property,
+      SITE_DEFAULTS,
+    );
+
+    expect(resolved.imageUrl).toBe(HERO_URL);
+    expect(resolved.imageSource).toBe("hero");
+  });
+
+  it("treats a blank site default as absent", () => {
+    const resolved = resolvePropertyMetadata(withSeo(undefined), {
+      defaultOgImageUrl: "   ",
+    });
+
+    expect(resolved.imageUrl).toBeUndefined();
+    expect(resolved.imageSource).toBe("none");
+  });
+
+  it("does not let the site default displace the property's own title", () => {
+    // Level 2 always produces a title for a property, so level 3 is only ever
+    // reached for the image in practice.
+    const resolved = resolvePropertyMetadata(withSeo(undefined), SITE_DEFAULTS);
+
+    expect(resolved.title).toBe(derivePropertyMetadata(baseProperty).title);
+    expect(resolved.description).toBe(
+      derivePropertyMetadata(baseProperty).description,
+    );
   });
 });
 
@@ -145,6 +235,20 @@ describe("propertyMetadata", () => {
       index: false,
       follow: true,
     });
+  });
+
+  it("never emits index: true, so a preview deployment stays noindex", () => {
+    // The root layout asks preview and local deployments not to be indexed.
+    // Next merges metadata field by field, so a page emitting index: true would
+    // override that and publish every property from a preview URL. A property
+    // setting may restrict indexing further; it must not widen it.
+    for (const seo of [undefined, { noindex: false }, { noindex: true }]) {
+      const robots = propertyMetadata(withSeo(seo)).robots;
+
+      if (robots) {
+        expect(robots).toMatchObject({ index: false });
+      }
+    }
   });
 
   it("keeps the Open Graph values in step with the page's own", () => {
@@ -162,5 +266,48 @@ describe("propertyMetadata", () => {
     const metadata = propertyMetadata(withSeo(undefined));
 
     expect(metadata.openGraph).not.toHaveProperty("images");
+    expect(metadata.twitter).not.toHaveProperty("images");
+  });
+
+  it("uses the site default image when the property has none", () => {
+    const metadata = propertyMetadata(withSeo(undefined), SITE_DEFAULTS);
+
+    expect(metadata.openGraph).toMatchObject({
+      images: [{ url: SITE_DEFAULTS.defaultOgImageUrl }],
+    });
+  });
+});
+
+describe("Twitter card", () => {
+  it("matches the Open Graph title, description and image exactly", () => {
+    const property = { ...withSeo(undefined), heroImage: HERO_IMAGE } as Property;
+    const metadata = propertyMetadata(property, SITE_DEFAULTS);
+    const resolved = resolvePropertyMetadata(property, SITE_DEFAULTS);
+
+    expect(metadata.twitter).toMatchObject({
+      card: "summary_large_image",
+      title: resolved.title,
+      description: resolved.description,
+      images: [resolved.imageUrl],
+    });
+
+    // And the two networks agree with each other.
+    expect(metadata.twitter?.title).toBe(metadata.openGraph?.title);
+    expect(metadata.twitter?.description).toBe(metadata.openGraph?.description);
+  });
+
+  it("uses the plain summary card when there is no image", () => {
+    // Claiming a large image and supplying none renders an empty banner.
+    expect(propertyMetadata(withSeo(undefined)).twitter).toMatchObject({
+      card: "summary",
+    });
+  });
+
+  it("claims no Twitter account, because none is configured", () => {
+    const twitter = propertyMetadata(withSeo(undefined), SITE_DEFAULTS)
+      .twitter as Record<string, unknown>;
+
+    expect(twitter.site).toBeUndefined();
+    expect(twitter.creator).toBeUndefined();
   });
 });

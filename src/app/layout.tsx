@@ -60,6 +60,17 @@ export async function generateMetadata(): Promise<Metadata> {
         ? { images: [{ url: settings.defaultOgImageUrl }] }
         : {}),
     },
+    // Kept in step with Open Graph above. Property pages set their own, built
+    // from the same resolved values, so the two never disagree. No handle is
+    // configured, so none is claimed.
+    twitter: {
+      card: settings.defaultOgImageUrl ? "summary_large_image" : "summary",
+      title,
+      description,
+      ...(settings.defaultOgImageUrl
+        ? { images: [settings.defaultOgImageUrl] }
+        : {}),
+    },
     alternates: { canonical: "/" },
     // Preview and local builds are never indexed.
     robots: env.isIndexable

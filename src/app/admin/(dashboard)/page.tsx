@@ -3,6 +3,8 @@ import Link from "next/link";
 import { AdminAlert } from "@/components/admin/admin-alert";
 import { requireAdmin } from "@/lib/admin/auth";
 import { getDashboardMetrics } from "@/lib/admin/metrics-repository";
+import { PROPERTY_STATUSES } from "@/lib/admin/validation/property";
+import { propertyStatusTokens } from "@/lib/design/property-status";
 
 export const metadata = {
   title: "Dashboard",
@@ -26,6 +28,23 @@ export default async function AdminDashboardPage() {
     getDashboardMetrics(),
   ]);
 
+  /*
+    Two related but different numbers, and the distinction is deliberate.
+
+    `publishBlocked` is every draft the publish gate would refuse, for any
+    reason. `missingLocation` is the subset with no location at all — the most
+    common cause and the one with an obvious next step.
+
+    Showing only the subset and calling it "blocked" would understate the work;
+    showing only the total leaves the administrator without a starting point. So
+    both appear, each labelled as what it actually counts, and the location line
+    is suppressed when it accounts for the whole figure rather than repeating it.
+  */
+  const blocked = metrics.properties.publishBlocked;
+  const showLocationLine =
+    metrics.properties.missingLocation > 0 &&
+    (blocked === null || metrics.properties.missingLocation < blocked);
+
   const attention = [
     {
       count: metrics.enquiries.unread,
@@ -34,10 +53,16 @@ export default async function AdminDashboardPage() {
       plural: "enquiries have not been read",
     },
     {
-      count: metrics.properties.missingLocation,
+      count: blocked ?? 0,
+      href: "/admin/properties?published=draft",
+      singular: "draft property cannot be published yet",
+      plural: "draft properties cannot be published yet",
+    },
+    {
+      count: showLocationLine ? metrics.properties.missingLocation : 0,
       href: "/admin/properties",
-      singular: "property has no location set, so it cannot be published",
-      plural: "properties have no location set, so they cannot be published",
+      singular: "of those has no location set up at all",
+      plural: "of those have no location set up at all",
     },
     {
       count: metrics.images.missingAltText,
@@ -52,6 +77,13 @@ export default async function AdminDashboardPage() {
       plural: "properties are still drafts",
     },
   ].filter((item) => item.count > 0);
+
+  // Ordered as the listing orders them, so the dashboard and the filter agree.
+  const statuses = PROPERTY_STATUSES.map((status) => ({
+    status,
+    label: propertyStatusTokens[status].label,
+    count: metrics.byStatus[status] ?? 0,
+  })).filter((entry) => entry.count > 0);
 
   return (
     <div className="space-y-8">
@@ -122,7 +154,7 @@ export default async function AdminDashboardPage() {
                 href="/admin/properties"
                 label="Properties"
                 value={metrics.properties.total}
-                detail={`${metrics.properties.published} published · ${metrics.properties.draft} draft`}
+                detail={`${metrics.properties.published} published · ${metrics.properties.draft} draft · ${metrics.properties.featured} featured`}
               />
               <MetricCard
                 href="/admin/enquiries"
@@ -150,6 +182,31 @@ export default async function AdminDashboardPage() {
               />
             </div>
           </section>
+
+          {/* Only the statuses actually in use. A row of zeros describes the
+              vocabulary, not the catalogue. */}
+          {statuses.length > 0 && (
+            <section>
+              <h2 className="text-foreground-subtle text-[0.625rem] font-medium tracking-[0.2em] uppercase">
+                By status
+              </h2>
+              <ul className="mt-4 flex flex-wrap gap-3">
+                {statuses.map((entry) => (
+                  <li key={entry.status}>
+                    <Link
+                      href={`/admin/properties?status=${entry.status}`}
+                      className="bg-surface hover:bg-surface-raised border-border flex items-baseline gap-2 rounded-lg border px-4 py-2.5 text-sm transition-colors"
+                    >
+                      <span className="text-foreground font-medium tabular-nums">
+                        {entry.count}
+                      </span>
+                      <span className="text-foreground-muted">{entry.label}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
         </>
       )}
 

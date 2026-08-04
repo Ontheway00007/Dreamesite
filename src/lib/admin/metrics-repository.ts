@@ -1,6 +1,8 @@
 import "server-only";
 
 import { logAdminError } from "@/lib/admin/errors";
+import { callRpc } from "@/lib/admin/rpc";
+import { PROPERTY_STATUSES } from "@/lib/admin/validation/property";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
@@ -39,13 +41,37 @@ export interface DashboardMetrics {
     readonly total: number;
     readonly published: number;
     readonly draft: number;
+    readonly featured: number;
     /**
-     * Properties with no location configured. `property_location_settings` is
-     * at most one row per property, so the difference between the two counts is
-     * exactly the number with none — and publishing is blocked without one.
+     * Draft properties with at least one publish blocker, from
+     * `count_publish_blocked_properties()`.
+     *
+     * This is the honest total, and it replaces a subtraction that only counted
+     * missing location settings. It shares its definition with the publish gate
+     * — the RPC calls `property_publish_blockers`, the same function publishing
+     * calls — so the dashboard cannot claim a property is ready when publishing
+     * would refuse it, or the reverse.
+     *
+     * Null when the count could not be read, so the card can omit itself rather
+     * than report a confident zero.
+     */
+    readonly publishBlocked: number | null;
+    /**
+     * Properties with no location configured at all. A strict subset of
+     * `publishBlocked`, kept separate because it is the single most common
+     * blocker and the one with an obvious next step.
+     *
+     * `property_location_settings` holds at most one row per property, so the
+     * difference between the two table counts is exactly the number with none.
      */
     readonly missingLocation: number;
   };
+  /**
+   * How many properties are in each status. Keyed by the status values in
+   * `PROPERTY_STATUSES`, so a status added later appears without changing this
+   * shape.
+   */
+  readonly byStatus: Readonly<Record<string, number>>;
   readonly enquiries: {
     readonly total: number;
     readonly unread: number;
@@ -67,7 +93,15 @@ export interface DashboardMetrics {
 }
 
 const EMPTY_METRICS: DashboardMetrics = {
-  properties: { total: 0, published: 0, draft: 0, missingLocation: 0 },
+  properties: {
+    total: 0,
+    published: 0,
+    draft: 0,
+    featured: 0,
+    publishBlocked: null,
+    missingLocation: 0,
+  },
+  byStatus: {},
   enquiries: { total: 0, unread: 0 },
   images: { total: 0, published: 0, missingAltText: 0 },
   content: { constructionUpdates: 0, features: 0 },
@@ -108,6 +142,7 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
   const [
     propertiesTotal,
     propertiesPublished,
+    propertiesFeatured,
     locationsConfigured,
     enquiriesTotal,
     enquiriesUnread,
@@ -116,9 +151,13 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
     imagesMissingAlt,
     constructionUpdates,
     features,
+    // One count per status, from the shared vocabulary rather than a literal
+    // list, so adding a status cannot leave a card silently missing.
+    ...statusCounts
   ] = await Promise.all([
     count("properties"),
     count("properties", (query) => query.eq("is_published", true)),
+    count("properties", (query) => query.eq("is_featured", true)),
     count("property_location_settings"),
     count("enquiries"),
     count("enquiries", (query) => query.eq("status", "new")),
@@ -127,13 +166,36 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
     count("property_images", (query) => query.is("alt_text", null)),
     count("construction_updates"),
     count("property_features"),
+    ...PROPERTY_STATUSES.map((status) =>
+      count("properties", (query) => query.eq("status", status)),
+    ),
   ]);
+
+  /*
+    The blocked count is the one figure that is not a `head` count, because it
+    is not a row count: it asks the publish gate about each draft. It is
+    deliberately not folded into the all-or-nothing check below — if only this
+    read fails, three accurate numbers plus one omitted card is better than a
+    page that refuses to render.
+  */
+  const { data: blockedData, error: blockedError } = await callRpc(
+    supabase,
+    "count_publish_blocked_properties",
+    {},
+  );
+
+  if (blockedError) {
+    logAdminError("Counting properties blocked from publishing", blockedError);
+  }
+
+  const publishBlocked = blockedError ? null : (blockedData ?? 0);
 
   // Any failure makes the whole set untrustworthy — a dashboard showing three
   // real numbers and one zero is worse than one that says it could not load.
   const results = [
     propertiesTotal,
     propertiesPublished,
+    propertiesFeatured,
     locationsConfigured,
     enquiriesTotal,
     enquiriesUnread,
@@ -142,6 +204,7 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
     imagesMissingAlt,
     constructionUpdates,
     features,
+    ...statusCounts,
   ];
 
   if (results.some((value) => value === null)) {
@@ -151,16 +214,25 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
   const total = propertiesTotal ?? 0;
   const published = propertiesPublished ?? 0;
 
+  const byStatus: Record<string, number> = {};
+
+  PROPERTY_STATUSES.forEach((status, index) => {
+    byStatus[status] = statusCounts[index] ?? 0;
+  });
+
   return {
     properties: {
       total,
       published,
       draft: total - published,
+      featured: propertiesFeatured ?? 0,
+      publishBlocked,
       // Clamped: a negative would mean settings rows outnumber properties,
       // which the foreign key makes impossible, but a metric should never
       // display a nonsense number if it somehow did.
       missingLocation: Math.max(0, total - (locationsConfigured ?? 0)),
     },
+    byStatus,
     enquiries: {
       total: enquiriesTotal ?? 0,
       unread: enquiriesUnread ?? 0,

@@ -9,6 +9,25 @@
  * Generated types from the Supabase CLI (`npm run db:types`) replace this
  * file when a real project exists; keeping this hand-written copy means
  * mapping code is typeable without a running database.
+ *
+ * ## Audited against the real schema
+ *
+ * Hand-maintained types are only as good as the last person to remember to
+ * update them, so in Phase 6.3.1 they were checked rather than trusted:
+ * `supabase gen types typescript` was run against a cluster with every
+ * migration applied, and the output compared to this file column by column.
+ *
+ * All fourteen tables matched on both column names and nullability, and every
+ * function declared here exists with the signature declared. `gen-types.sh` in
+ * `supabase/verify/` reproduces that comparison.
+ *
+ * The generated output was *not* adopted as a replacement, for two reasons.
+ * It comes from a cluster whose `auth` and `storage` schemas are the stubs in
+ * `00_supabase_stubs.sql` rather than the real platform ones, so it would be
+ * regenerated — and would churn — the moment a real project exists. And
+ * swapping a file that twenty modules import, in a phase whose whole purpose is
+ * hardening, is the riskiest change available for the smallest benefit. Adopt it
+ * when `supabase gen types --local` can run against the real stack.
  */
 
 export type Json =
@@ -473,6 +492,32 @@ export interface Database {
        * under one row lock. Returns the blockers when it refuses; an empty
        * array means it published. See migration 0010.
        */
+      /** Advisory-lock helpers added by 0011. */
+      property_lock_key: {
+        Args: { p_property_id: string };
+        Returns: number;
+      };
+      lock_property: {
+        Args: { p_property_id: string };
+        Returns: void;
+      };
+      lock_admin_roster: {
+        Args: Record<string, never>;
+        Returns: void;
+      };
+      /** Removes a property's location and unpublishes it. Added by 0011. */
+      clear_property_location: {
+        Args: { p_property_id: string };
+        Returns: void;
+      };
+      /**
+       * Draft properties with at least one publish blocker. Shares its
+       * definition with the publish gate. Added by 0011.
+       */
+      count_publish_blocked_properties: {
+        Args: Record<string, never>;
+        Returns: number;
+      };
       publish_property_if_ready: {
         Args: { p_property_id: string };
         Returns: string[];

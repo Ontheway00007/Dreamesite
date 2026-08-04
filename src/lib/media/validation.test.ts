@@ -19,6 +19,13 @@ const OTHER_PROPERTY = "0192f3c1-6a2b-4d5e-8f70-aaaabbbbcccc";
 const OBJECT = "abcdef01-2345-6789-abcd-ef0123456789";
 
 /** Fields carrying an error, for concise assertions. */
+function messages(result: {
+  ok: boolean;
+  errors?: readonly { message: string }[];
+}) {
+  return result.ok ? [] : (result.errors ?? []).map((error) => error.message);
+}
+
 function fields(result: { ok: boolean; errors?: readonly { field: string }[] }) {
   return result.ok ? [] : (result.errors ?? []).map((error) => error.field);
 }
@@ -566,16 +573,52 @@ describe("checkHeroEligibility", () => {
     ).toBe(true);
   });
 
-  it("accepts a draft photograph without a description", () => {
-    // It cannot be seen publicly yet, so the description is not required
-    // until it is published.
-    expect(
-      checkHeroEligibility({
-        imageType: "gallery",
-        hasSource: true,
-        isPublished: false,
-      }).ok,
-    ).toBe(true);
+  it("refuses a draft photograph, matching the database", () => {
+    // This is the case that was wrong. A draft hero is designated but
+    // invisible — the public mapper filters unpublished images — so the card
+    // shows no photograph. The RPC has always refused it; this used to accept
+    // it, so the administrator was told about something else entirely after a
+    // round trip.
+    const result = checkHeroEligibility({
+      imageType: "gallery",
+      hasSource: true,
+      altText: "Street view of the completed home",
+      isPublished: false,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(fields(result)).toContain("isPublished");
+    expect(messages(result).join(" ")).toContain("Publish this image");
+  });
+
+  it("reports both reasons for a draft with no description", () => {
+    // The database raises on the first reason it finds. Collecting both here
+    // saves the administrator fixing one and being refused for the other.
+    const result = checkHeroEligibility({
+      imageType: "gallery",
+      hasSource: true,
+      altText: null,
+      isPublished: false,
+    });
+
+    expect(fields(result)).toContain("isPublished");
+    expect(fields(result)).toContain("altText");
+  });
+
+  it("requires a description whether or not the image is published", () => {
+    // Unconditional, matching the SQL. Publication is checked separately.
+    for (const isPublished of [true, false]) {
+      expect(
+        fields(
+          checkHeroEligibility({
+            imageType: "gallery",
+            hasSource: true,
+            altText: "   ",
+            isPublished,
+          }),
+        ),
+      ).toContain("altText");
+    }
   });
 
   it("refuses a floor plan", () => {
@@ -623,10 +666,38 @@ describe("checkHeroEligibility", () => {
         checkHeroEligibility({
           imageType: "virtual-tour",
           hasSource: true,
-          isPublished: false,
+          altText: "Described",
+          isPublished: true,
         }),
       ),
     ).toContain("imageType");
+  });
+
+  it("accepts exactly what the database accepts, and nothing else", () => {
+    // The table below is the SQL rule transcribed. If the two ever diverge
+    // again, this is the test that says so.
+    const cases = [
+      { label: "published, described photograph", isPublished: true,  altText: "A home", imageType: "gallery",    hasSource: true,  ok: true },
+      { label: "draft photograph",                isPublished: false, altText: "A home", imageType: "gallery",    hasSource: true,  ok: false },
+      { label: "no description",                  isPublished: true,  altText: null,     imageType: "gallery",    hasSource: true,  ok: false },
+      { label: "blank description",               isPublished: true,  altText: "  ",     imageType: "gallery",    hasSource: true,  ok: false },
+      { label: "no source",                       isPublished: true,  altText: "A home", imageType: "gallery",    hasSource: false, ok: false },
+      { label: "floor plan",                      isPublished: true,  altText: "Plan",   imageType: "floor_plan", hasSource: true,  ok: false },
+      { label: "not an image type",               isPublished: true,  altText: "A home", imageType: "brochure",   hasSource: true,  ok: false },
+      { label: "facade is a photograph",          isPublished: true,  altText: "Facade", imageType: "facade",     hasSource: true,  ok: true },
+    ] as const;
+
+    for (const testCase of cases) {
+      expect(
+        checkHeroEligibility({
+          imageType: testCase.imageType,
+          hasSource: testCase.hasSource,
+          altText: testCase.altText,
+          isPublished: testCase.isPublished,
+        }).ok,
+        testCase.label,
+      ).toBe(testCase.ok);
+    }
   });
 });
 

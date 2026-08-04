@@ -468,10 +468,28 @@ export interface HeroCandidate {
 /**
  * Whether an image may become the hero.
  *
- * A hero is published on cards, the property page and social previews, so it
- * has to be an image that resolves and is described. A floor plan is excluded:
- * it is a diagram, and a card showing a line drawing where every other card
- * shows a photograph reads as a fault.
+ * A hero appears on cards, the property page and social previews, so it has to
+ * be an image that resolves, is described, and is actually visible to the
+ * public. A floor plan is excluded: it is a diagram, and a card showing a line
+ * drawing where every other card shows a photograph reads as a fault.
+ *
+ * ## One rule, stated twice
+ *
+ * `set_property_hero_image` enforces the same five conditions and is the
+ * authority — it can see the row, so it is the only place that can check
+ * ownership, and it cannot be bypassed. This function exists so the admin sees
+ * the reason next to the button instead of after a round trip.
+ *
+ * The two were out of step. This one accepted an unpublished image, and only
+ * asked for alt text when the image *was* published — so a draft with no
+ * description passed here and was refused by the database, and the
+ * administrator got a message about something else entirely. Both conditions are
+ * now unconditional, matching the SQL.
+ *
+ * The accept/reject decision is identical to the database's. The only difference
+ * is that this collects every reason while the database raises on the first, so
+ * an administrator fixing a draft with no alt text is told about both at once
+ * rather than discovering the second after fixing the first.
  */
 export function checkHeroEligibility(
   candidate: HeroCandidate,
@@ -491,7 +509,19 @@ export function checkHeroEligibility(
     errors.add("source", "That image has no file or link attached.");
   }
 
-  if (candidate.isPublished && isBlank(candidate.altText ?? undefined)) {
+  // A draft hero is designated but invisible: the public mapper filters
+  // unpublished images, so the card would show no photograph at all. Requiring
+  // publication first is also the reason "set as hero" does not publish as a
+  // side effect — silently making a photograph public is a larger decision than
+  // the button appears to offer.
+  if (!candidate.isPublished) {
+    errors.add(
+      "isPublished",
+      "Publish this image before making it the main image.",
+    );
+  }
+
+  if (isBlank(candidate.altText ?? undefined)) {
     errors.add(
       "altText",
       "Describe this image before making it the main image.",

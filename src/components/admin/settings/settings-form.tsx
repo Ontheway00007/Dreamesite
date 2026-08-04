@@ -298,10 +298,15 @@ export function SettingsForm({ settings, fallbacks, hasStoredSettings }: Props) 
         title="Operational"
         description="Internal to the business. The enquiry address is never shown on the public site — it is deliberately left out of the public settings view."
       >
+        {/*
+          Stated plainly rather than left to be inferred. The field stores an
+          address and nothing sends to it, so an administrator who fills it in
+          and waits for emails would be waiting indefinitely.
+        */}
         <Field
-          label="Enquiry notification address"
+          label="Enquiry notification address (reserved)"
           error={fieldErrors.enquiryRecipientEmail}
-          hint="Internal only. Where enquiry notifications should go."
+          hint="Reserved for enquiry email notifications, which are not built yet. Nothing is sent to this address — enquiries arrive in the Enquiries page of this dashboard only. Recording it now means the address is ready when delivery is added."
         >
           <input
             type="email"

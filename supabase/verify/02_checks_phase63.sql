@@ -41,7 +41,7 @@ begin
       '11111111-1111-4111-8111-111111111111',
       'cccc0001-0000-4000-8000-000000000001');
     raise exception 'CHECK FAILED: a draft image was made hero';
-  exception when check_violation then
+  exception when sqlstate 'PT422' then
     raise notice 'PASS  hero selection refuses a draft image';
   end;
 
@@ -51,7 +51,7 @@ begin
       '11111111-1111-4111-8111-111111111111',
       'cccc0002-0000-4000-8000-000000000002');
     raise exception 'CHECK FAILED: an undescribed image was made hero';
-  exception when check_violation then
+  exception when sqlstate 'PT422' then
     raise notice 'PASS  hero selection refuses an image with no alt text';
   end;
 
@@ -61,7 +61,7 @@ begin
       '11111111-1111-4111-8111-111111111111',
       'cccc0003-0000-4000-8000-000000000003');
     raise exception 'CHECK FAILED: a floor plan was made hero';
-  exception when check_violation then
+  exception when sqlstate 'PT422' then
     raise notice 'PASS  hero selection refuses a floor plan';
   end;
 
@@ -71,7 +71,7 @@ begin
       '11111111-1111-4111-8111-111111111111',
       'bbbb0001-0000-4000-8000-000000000001');
     raise exception 'CHECK FAILED: another property''s image was made hero';
-  exception when check_violation then
+  exception when sqlstate 'PT422' then
     raise notice 'PASS  hero selection refuses an image from another property';
   end;
 end $$;
@@ -266,7 +266,7 @@ begin
     set is_active = false
     where user_id = 'aaaaaaaa-0000-4000-8000-000000000001';
     raise exception 'CHECK FAILED: the last super admin was deactivated';
-  exception when check_violation then
+  exception when sqlstate 'PT422' then
     raise notice 'PASS  the last active super administrator cannot be deactivated';
   end;
 
@@ -275,7 +275,7 @@ begin
     set role = 'admin'
     where user_id = 'aaaaaaaa-0000-4000-8000-000000000001';
     raise exception 'CHECK FAILED: the last super admin was demoted';
-  exception when check_violation then
+  exception when sqlstate 'PT422' then
     raise notice 'PASS  the last active super administrator cannot be demoted';
   end;
 
@@ -283,7 +283,7 @@ begin
     delete from public.admin_users
     where user_id = 'aaaaaaaa-0000-4000-8000-000000000001';
     raise exception 'CHECK FAILED: the last super admin was deleted';
-  exception when check_violation then
+  exception when sqlstate 'PT422' then
     raise notice 'PASS  the last active super administrator cannot be deleted';
   end;
 end $$;
@@ -325,7 +325,7 @@ begin
     set is_active = false
     where user_id = 'aaaaaaaa-0000-4000-8000-000000000001';
     raise exception 'CHECK FAILED: an admin deactivated themselves';
-  exception when check_violation then
+  exception when sqlstate 'PT422' then
     raise notice 'PASS  the self-lockout guard still refuses self-deactivation';
   end;
 end $$;
@@ -413,7 +413,7 @@ begin
       array['dddd0001-0000-4000-8000-000000000001',
             'dddd0003-0000-4000-8000-000000000003']::uuid[]);
     raise exception 'CHECK FAILED: construction reorder accepted another property''s update';
-  exception when check_violation then
+  exception when sqlstate 'PT422' then
     raise notice 'PASS  construction reorder refuses an update from another property';
   end;
 
@@ -423,7 +423,7 @@ begin
       array['dddd0001-0000-4000-8000-000000000001',
             'dddd0001-0000-4000-8000-000000000001']::uuid[]);
     raise exception 'CHECK FAILED: construction reorder accepted a duplicate';
-  exception when check_violation then
+  exception when sqlstate 'PT422' then
     raise notice 'PASS  construction reorder refuses a duplicate';
   end;
 end $$;
@@ -488,7 +488,7 @@ begin
       array['eeee0001-0000-4000-8000-000000000001',
             'eeee0003-0000-4000-8000-000000000003']::uuid[]);
     raise exception 'CHECK FAILED: feature reorder accepted an id from another category';
-  exception when check_violation then
+  exception when sqlstate 'PT422' then
     raise notice 'PASS  feature reorder refuses an id from another category';
   end;
 end $$;

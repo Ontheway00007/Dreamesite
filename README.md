@@ -306,9 +306,9 @@ second exists so "draft media never becomes public media" is a property of the
 mapping rather than only of the caller.
 
 **Publishing is one call, not a check followed by a write.** `publishPropertyAction`
-invokes `publish_property_if_ready(uuid)`, which takes `FOR UPDATE` on the
-property row, evaluates `property_publish_blockers()`, updates, and writes the
-audit entry — all inside one transaction.
+invokes `publish_property_if_ready(uuid)`, which takes the property advisory lock
+*and* `FOR UPDATE` on the property row, evaluates `property_publish_blockers()`,
+updates, and writes the audit entry — all inside one transaction.
 
 The previous shape read the blockers, decided, and updated separately. Between
 those two steps a location could be deleted or an image unpublished, and the
@@ -325,6 +325,44 @@ does not carry it and `PropertyInput` does not accept it, so the only routes to
 public visibility are the publish and unpublish actions. A form that could
 publish would need its own readiness check, and that check would have the same
 gap the RPC exists to close.
+
+### Property locking
+
+The row lock alone was not enough. Readiness spans three tables, and you cannot
+`SELECT ... FOR UPDATE` a row that does not exist — "there is no location
+settings row" is one of the states being guarded. So publishing takes a
+**property-scoped advisory lock** as well, and every write that can change
+readiness takes the same one:
+
+| Function | Takes the lock |
+| --- | --- |
+| `publish_property_if_ready` | yes, then the `properties` row lock |
+| `save_property_location` | yes |
+| `clear_property_location` | yes |
+
+`clear_property_location` is new. Before it, the only *documented* writer of the
+location tables took the lock, which made the lock only as good as everyone
+remembering it. Giving removal a front door means "clear the location" and
+"publish" contend properly — and because a property with no location cannot be
+published, clearing one unpublishes the property in the same transaction rather
+than leaving the two to disagree.
+
+The key comes from `property_lock_key(uuid)`: `md5` of the UUID with a class
+prefix, taken as the first 64 bits. The prefix is what keeps a property key from
+colliding with the administrator roster key — they are different key spaces by
+construction, not by luck. A collision between two properties would cost some
+unnecessary waiting and never a wrong result.
+
+**Ordering, and why there is no deadlock.** The rule: acquire the advisory lock
+before any row lock, and never hold two advisory locks at once. No transaction
+needs both a property lock and the roster lock, so those cannot form a cycle.
+Within the property lock, publishing takes the advisory lock and then the row
+lock; the only other writer of that row is an ordinary property update, which
+takes the row lock and never asks for the advisory lock, so it cannot be the
+other half of a cycle.
+
+Verified with two live sessions in `supabase/verify/04_concurrency.sh`, including
+that different properties do not block each other.
 
 ## Authentication & Admin
 
@@ -376,6 +414,29 @@ The admin system lives at `/admin` and uses Supabase Auth with email/password.
 
 An administrator cannot demote or delete themselves — a trigger on
 `admin_users` refuses it, so the installation cannot be locked out.
+
+**And the installation can never reach zero active super administrators.** A
+second trigger counts what would remain and refuses deletion, deactivation and
+demotion when the answer is none.
+
+That guard counted correctly and still permitted the state it forbade. Two super
+administrators, A and B: transaction 1 demotes A and finds B still active, so
+allows it; transaction 2 demotes B and finds A still active, because transaction 1
+has not committed. Both commit. Nobody is left. Neither transaction is wrong on
+its own — only the pair is, which is write skew, and row locking cannot see it
+because the two touch *different rows*.
+
+The fix serialises on the invariant rather than on any row: `lock_admin_roster()`
+before counting. This is the one intentionally global lock in the schema, because
+"at least one active super administrator exists" is a property of the whole table.
+It is taken only on the path that can actually decrement the count, so ordinary
+administrator edits never contend.
+
+The load-bearing detail is that the count taken after the lock is granted sees the
+other transaction's committed change — a volatile function takes a fresh snapshot
+per statement in `READ COMMITTED`. That is too subtle to accept on reasoning, so
+`04_concurrency.sh` proves it with two live sessions, and asserts the second one
+genuinely blocked rather than merely failing.
 
 ### Authorization helpers, and why they are SECURITY DEFINER
 
@@ -493,6 +554,39 @@ copy. It deliberately does not copy:
 
 A duplicate is always a draft, never featured, and never a display home. The
 button says what is and is not copied.
+
+### Reordering
+
+All four reorder functions — images, resources, construction updates, features —
+require the **complete group**, not just a valid subset of it.
+
+They used to check that every supplied id belonged to the property and the group,
+which is an ownership question and was right. What they did not check was whether
+the list *was* the group. `set sort_order = position` only touches rows named in
+the list, so three ids sent for a group of four left the fourth on its old
+position — frequently one now held by another row. Two rows then claim index 2 and
+the order depends on whatever the read does with the tie.
+
+Two administrators with the page open, one adding an image and the other
+dragging, produces exactly that list.
+
+The added check is a count: the number of rows in the group must equal the number
+supplied. With the existing ownership and duplicate checks, that proves the list
+is a permutation of the group — every id belongs, none repeats, and there are
+exactly as many as the group holds, so nothing is missing. It also detects both
+concurrent cases for free: an insertion makes the group larger than the list, and
+a deletion makes an id unownable.
+
+A stale list gets `PT409` and the message *"The list changed while you were
+editing it. Reload and try again."*
+
+An empty list is no longer a silent no-op. Sending nothing for a group of four is
+a stale request, and only the count can tell that apart from a genuinely empty
+group — which is still accepted and still does nothing.
+
+Positions come back contiguous from zero. Public and admin reads additionally
+break ties by id, so even data that predates these rules cannot appear to shuffle
+itself between requests.
 
 ### Errors
 
@@ -707,6 +801,22 @@ Every metadata field resolves in the same order, and the order is the design:
 can preview exactly what the live page will produce instead of deriving it
 separately — two independent derivations is how a preview and a page drift apart.
 
+The site-wide level is **passed in**, not read:
+
+```ts
+propertyMetadata(property, { defaultMetaTitle, defaultMetaDescription, defaultOgImageUrl })
+```
+
+A resolver that reached for the database would be untestable without mocking one
+and would issue a query from whatever component called it. The page already has
+the values — `getPublicSettings()` is request-cached — so passing them costs one
+read for the whole render and keeps the resolver a pure function.
+
+In practice only the image reaches level 3: a property always has a name, a suburb
+and a summary, so levels 1 and 2 always produce a title and a description. The
+site default is still consulted for them, because a chain with a hole in it is one
+refactor away from being wrong.
+
 ### Social images
 
 `seo_og_image_id` is checked against the database before it is saved:
@@ -718,20 +828,43 @@ a draft image would be a broken preview everywhere the link is shared. That is
 refused rather than warned about. With no override the hero is used, and
 `heroImageUrl()` already declines to return a floor plan or an unpublished image.
 
-There is deliberately no site-wide fallback image for property pages. A generic
-banner on every property link looks like the wrong home rather than none.
+With no override the hero is used, and with no hero the **site-wide default from
+Settings** is used. That third level was previously omitted, on the reasoning that
+a generic banner on every property link looks like the wrong home rather than
+none. That argument holds for an image the code invents; it does not hold for one
+the business went to Settings and chose. Opting in is the difference.
+
+There is still no built-in image. With nothing configured and no photograph, a
+property page carries no social image at all.
+
+`resolvePropertyMetadata` reports which level supplied the image, so the chain is
+asserted directly in tests rather than inferred from a URL.
 
 If the chosen image later becomes ineligible — unpublished, deleted,
 recategorised — the mapper stops resolving it and the page falls back to the hero.
 The editor reports the stored choice as no longer usable rather than showing
 "Hero photograph" as though nothing were set.
 
+### Twitter cards
+
+Built from the same resolved values as Open Graph, so a card cannot disagree with
+the page or with the other network. `summary_large_image` when there is an image
+and `summary` when there is not — claiming a large image and supplying none
+renders an empty banner.
+
+No `site` or `creator` handle. None is configured, and inventing one would
+attribute the business's pages to an account it does not own.
+
 ### `noindex`
 
-`robots` is set on a property page only when the property is marked noindex.
-Leaving it unset otherwise lets the root layout's site-wide rule apply, which
-asks preview and local deployments not to be indexed. Overriding it per page
-would publish every property page from a preview URL.
+`robots` is set on a property page only when the property is marked noindex, and
+then only ever to `index: false`. Next merges metadata field by field, so leaving
+it unset lets the root layout's rule apply — and that rule is what keeps preview
+and local deployments out of search results.
+
+`index: true` is never emitted. A per-property setting can restrict indexing
+beyond the deployment default; it must not widen it, or a property marked
+indexable would be indexed *from a preview URL*.
 
 ## Site settings
 
@@ -753,6 +886,21 @@ form as the administrator types. It is a heuristic and is not exhaustive — an
 exhaustive definition of "looks like a secret" does not exist — but it catches the
 realistic accident of pasting a key into a field while moving configuration
 around.
+
+### The enquiry notification address is reserved, not active
+
+`enquiry_recipient_email` stores an address and **nothing sends to it**. No
+notification delivery exists; enquiries are stored and read in the Enquiries page
+of the dashboard.
+
+The column is kept rather than dropped — the address is a real business decision
+worth recording, and dropping it would discard whatever has been entered — but the
+admin field is labelled *"(reserved)"* and says so in as many words, and the column
+comment says so in the database. A setting that appears operational while doing
+nothing is worse than no setting.
+
+Building delivery is Phase 7 work. Until then the honest statement is the one on
+the screen.
 
 ### The public view
 
@@ -797,10 +945,26 @@ count arrives in the `Content-Range` header. On `enquiries` that matters — the
 alternative moves names, email addresses and message bodies across the network to
 render a card that says "12".
 
-`missingLocation` is the difference between the `properties` and
-`property_location_settings` counts. The relationship is at most one row per
-property, so the difference is exactly the number with none — and publishing is
-blocked without one.
+The exception is the publish-blocked count, which is not a row count: it asks the
+publish gate about each draft. `count_publish_blocked_properties()` calls
+`property_publish_blockers` — the same function publishing calls — so the
+dashboard cannot claim a property is ready when publishing would refuse it, or the
+reverse. The cost is one function call per draft, and drafts are the properties
+somebody is actively working on, so it stays small.
+
+That number replaced a subtraction. The dashboard used to report "properties with
+no location settings", derived from two table counts, which is a real figure but
+not the number blocked from publishing — it misses a blank summary, a missing
+projection row, and anything else the gate checks.
+
+Both now appear, each labelled as what it counts: the blocked total, and the
+subset with no location at all, which is the most common cause and the one with an
+obvious next step. The location line is suppressed when it accounts for the whole
+figure rather than repeating it.
+
+The blocked count is the one metric allowed to fail on its own. If that single read
+fails the card is omitted; the others still render, because three accurate numbers
+plus one omitted card beats a page that refuses to load.
 
 If any single count fails, the whole set is reported as failed. A dashboard
 showing three real numbers and one zero is worse than one saying it could not

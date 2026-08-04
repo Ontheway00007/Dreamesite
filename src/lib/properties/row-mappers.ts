@@ -92,9 +92,24 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
-/** Sorts by the stable ordering columns PostgREST cannot always guarantee. */
-function bySortOrder<T extends { sort_order: number }>(a: T, b: T): number {
-  return a.sort_order - b.sort_order;
+/**
+ * Orders by position, then by id.
+ *
+ * The id tiebreaker is defence in depth. `sort_order` should be unique within a
+ * group — the reorder functions rewrite the whole group as a contiguous
+ * sequence, and migration 0011 refuses a partial list that would break that —
+ * but a row inserted directly, or legacy data from before that rule, can still
+ * tie. Without a tiebreaker, two tied rows come back in whatever order
+ * PostgreSQL happens to produce, which can differ between requests and makes a
+ * gallery appear to shuffle itself.
+ *
+ * The admin repositories apply the same tiebreaker in SQL, so both sides agree.
+ */
+function bySortOrder<T extends { sort_order: number; id: string }>(
+  a: T,
+  b: T,
+): number {
+  return a.sort_order - b.sort_order || a.id.localeCompare(b.id);
 }
 
 // ---------------------------------------------------------------------------

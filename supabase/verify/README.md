@@ -1,6 +1,6 @@
 # Migration verification harness
 
-SQL that asserts what migrations `0001`–`0010` claim: constraints hold, the
+SQL that asserts what migrations `0001`–`0011` claim: constraints hold, the
 helper functions behave, the storage path validator refuses traversal, hero
 selection is unique and atomic, reordering rejects foreign ids, and `audit_log`
 is genuinely append-only.
@@ -11,6 +11,13 @@ Two check files, run in order:
 | --- | --- |
 | `01_checks.sql` | Migrations `0001`–`0009` |
 | `02_checks_phase63.sql` | Migration `0010` |
+| `03_checks_phase631.sql` | Migration `0011`, single-session |
+| `04_concurrency.sh` | Migration `0011`, two live sessions |
+
+`run-local.sh` runs the first three. `04_concurrency.sh` is separate because it
+builds its own cluster and drives two connections through FIFOs; the shared
+cluster setup lives in `_cluster.sh` so the two cannot apply different
+migrations.
 
 > **Status: executed, and passing.**
 >
@@ -33,11 +40,17 @@ Two check files, run in order:
 >
 > Both are the kind of bug that only execution finds. Neither is visible in
 > review, and both had survived two phases of it.
+>
+> **Concurrency is verified too, as of Phase 6.3.1.** `04_concurrency.sh` drives
+> two live sessions and passes. It checks the outcome *and* that the second
+> session genuinely blocked on the advisory lock — a concurrency test that passes
+> because the loser failed for an unrelated reason is worse than none.
 
-## Running it, in one command
+## Running it
 
 ```bash
-sudo sh supabase/verify/run-local.sh
+sudo sh supabase/verify/run-local.sh      # every single-session suite
+sudo sh supabase/verify/04_concurrency.sh # two-session concurrency
 ```
 
 It creates a throwaway cluster in `/var/lib/pgverify`, applies the stubs and
@@ -114,6 +127,30 @@ Added by `02_checks_phase63.sql` for migration `0010`:
 - An anonymous caller may insert an enquiry but cannot supply `admin_notes`, and
   an ordinary enquiry still succeeds.
 - No `DELETE` policy exists on `enquiries` for anyone.
+
+Added by `03_checks_phase631.sql` and `04_concurrency.sh` for migration `0011`:
+
+- Advisory lock keys are deterministic, distinct per property, distinct from the
+  roster key, and re-entrant within a transaction.
+- The lock helpers are executable by `authenticated` and not by `anon`.
+- Authored refusals raise `PT422` / `PT409`, not a generic constraint code.
+- All four reorder functions require the complete group: a missing id, an extra
+  foreign id, a duplicate, an empty list against a populated group, a
+  concurrent insertion and a concurrent deletion are each refused, and a valid
+  reorder leaves contiguous zero-based positions.
+- An empty reorder of a genuinely empty group is still a no-op.
+- `clear_property_location` removes every location row and unpublishes the
+  property, after which publishing refuses it.
+- `count_publish_blocked_properties` agrees with `property_publish_blockers`
+  exactly, and counts drafts only.
+- Every function 0011 touches pins its `search_path`.
+- **Two concurrent super-administrator removals**: the second blocks, then is
+  refused, and the roster never reaches zero.
+- **Publishing versus a location mutation**: publishing waits, then sees the
+  committed change and refuses.
+- **Two different properties do not contend**: one publishes while the other's
+  lock is held, under a 4-second statement timeout that would fail if the locks
+  were global.
 
 **Not** covered:
 
