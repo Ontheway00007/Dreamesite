@@ -62,7 +62,8 @@ contract (`src/lib/properties/source.ts`):
 
 Production with Supabase configured but unreachable degrades to the empty
 catalogue rather than silently shipping demonstration data; detailed errors
-stay in server logs.
+stay in server logs. On non-Vercel hosts, set `DEPLOYMENT_ENV=production` in
+the runtime environment to get the same safeguard (see `.env.example`).
 
 ## Database setup
 
@@ -306,10 +307,6 @@ every `privacy` block before launch.
 descriptions, radii, address presets and runtime guards — that a future admin
 form will render. No dashboard exists yet; the vocabulary lives beside the rules
 so the dashboard and the public site can never describe a setting differently.
-
-The demonstration data is fictional: plan-type names, no street addresses, no
-invented prices or dates, and general coordinates chosen so no pin lands on a
-real private residence. It must be replaced before launch.
 
 ## Project structure
 

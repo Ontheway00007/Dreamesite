@@ -70,14 +70,6 @@ function compareProperties(a: Property, b: Property): number {
   return statusDelta !== 0 ? statusDelta : a.name.localeCompare(b.name);
 }
 
-async function propertiesFrom(choice: PropertySource | null): Promise<Property[]> {
-  if (choice === null) {
-    return [];
-  }
-
-  return choice.getProperties();
-}
-
 /**
  * The homepage subset. The source applies its own ordering — display priority
  * first when Supabase is active (that is the administrator's intent), or the
@@ -93,9 +85,32 @@ export async function getFeaturedProperties(): Promise<Property[]> {
   return source.getFeaturedProperties();
 }
 
-/** The full published catalogue, in catalog order. */
+/**
+ * The full published catalogue, in display order.
+ *
+ * When Supabase is active, the source returns properties in the
+ * administrator's priority order (display_priority ASC, name ASC) — that
+ * ordering is the admin's intent and must not be overridden.
+ *
+ * When local fixtures are active, the status showcase order (move-in-ready
+ * first, sold last) is applied since the fixtures have no admin context.
+ */
 export async function getProperties(): Promise<Property[]> {
-  return (await propertiesFrom(activeSource())).sort(compareProperties);
+  const source = activeSource();
+
+  if (source === null) {
+    return [];
+  }
+
+  const properties = await source.getProperties();
+
+  // Supabase source already returns in admin-defined order.
+  if (isSupabaseSourceAvailable()) {
+    return properties;
+  }
+
+  // Local fixtures: sort by status showcase order, then name.
+  return properties.sort(compareProperties);
 }
 
 /** A single property, or null when the slug does not exist. */

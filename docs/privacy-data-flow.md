@@ -54,17 +54,21 @@ The tests prove specific guarantees the schema alone cannot:
 
 The public locations are deliberately computed, not stored by hand.
 
-The regeneration routine lives in `src/lib/properties/projection.ts`. It:
+The regeneration routine lives in two modules:
 
-1. Reads `property_private_locations`, `property_location_settings` and
-   `suburb_references` through the service role.
-2. Maps them onto the `PropertyRecord` shape using the *same* definitions the
-   privacy validator and admin form will share.
-3. Runs `toPublicProperty` — the exact pipeline the app uses — to get the
-   published location for that property.
-4. Upserts the row into `property_public_locations`.
+- `src/lib/properties/projection.ts` — the pure mapping logic that transforms
+  private location + settings into a `PublicPropertyLocation` and the database
+  row shape. No I/O, no network, testable in isolation.
+- `src/lib/properties/generate-public-locations.ts` — the server-only service
+  (marked with `import "server-only"`) that orchestrates the workflow:
+
+1. Reads `property_private_locations`, `property_location_settings` and the
+   property's suburb/state through the service-role key.
+2. Calls `buildPublicLocation` from `projection.ts` — the same pipeline
+   `toPublicProperty` uses locally, so the algorithm is never duplicated.
+3. Upserts the resulting row into `property_public_locations`.
 
 It never runs in the browser, never sees the anon key, and never appears in
-the client bundle. When the Phase 7 privacy settings mutation lands, the
-admin's save handler calls this function so the public read path stays the
+the client bundle. When the Phase 6 admin actions land, the save handler calls
+`generatePublicLocationForProperty(id)` so the public read path stays the
 final, computed row instead of recalculating per request.

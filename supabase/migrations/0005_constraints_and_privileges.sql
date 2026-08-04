@@ -54,7 +54,9 @@ revoke execute on function public.set_updated_at() from anon, authenticated;
 
 alter table public.enquiries
   add constraint name_length check (length(name) <= 120),
+  add constraint email_length check (length(email) <= 254),
   add constraint message_length check (length(message) <= 4000),
+  add constraint source_length check (length(source) <= 50),
   add constraint phone_format check (
     phone is null or phone ~ '^[0-9+() \-]{6,25}$'
   );
@@ -66,11 +68,14 @@ alter table public.enquiries
 -- The two INSERT policies must bind `status = 'new'` to the entire
 -- disjunction, not just the left side. This assertion runs at migration
 -- time and fails the apply if a future edit reintroduces the precedence bug.
+--
+-- INSERT policies store their expression in `polwithcheck`, not `polqual`.
+-- `polqual` holds the USING clause and is NULL for INSERT-only policies.
 do $$
 declare
   policy_body text;
 begin
-  select pg_get_expr(polqual, polrelid) into policy_body
+  select pg_get_expr(polwithcheck, polrelid) into policy_body
   from pg_policy
   where polname = 'anyone may create an enquiry'
     and polrelid = 'public.enquiries'::regclass;

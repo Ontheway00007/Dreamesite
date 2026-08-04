@@ -84,13 +84,26 @@ export const env = {
 
   /**
    * True only for a real production deployment — never for local dev, CI or
-   * preview builds. Production detection comes from `VERCEL_ENV`: in Next.js,
-   * `NODE_ENV` is a compile-time constant the build bakes in, so it cannot be
-   * toggled by runtime decisions. Repositories use this to decide whether a
-   * missing Supabase configuration is acceptable (fixtures) or not (empty).
+   * preview builds. Detection uses:
+   *
+   * 1. `VERCEL_ENV === "production"` on Vercel.
+   * 2. `DEPLOYMENT_ENV === "production"` on any other host.
+   *
+   * This prevents fictional fixture data from leaking in production on ANY
+   * hosting platform, not just Vercel. Non-Vercel hosts must set
+   * `DEPLOYMENT_ENV=production` in their runtime environment (not at build
+   * time) so that builds and CI remain on local fixtures.
+   *
+   * `NODE_ENV` alone is NOT used because Next.js sets it to `production`
+   * during any build, including CI, which would block static generation
+   * from the demonstration data.
    */
   get isProductionDeployment(): boolean {
-    return process.env.VERCEL_ENV === "production";
+    if (process.env.VERCEL_ENV) {
+      return process.env.VERCEL_ENV === "production";
+    }
+
+    return process.env.DEPLOYMENT_ENV === "production";
   },
 
   /** Mapbox public access token (pk.*). */

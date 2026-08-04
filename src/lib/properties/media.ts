@@ -31,10 +31,15 @@ function resolve(
   visual: PropertyVisual,
   placeholderVariant: ArchitecturalVariant,
 ): ResolvedVisual {
+  // Storage path resolves through the bucket URL helper; external URLs are
+  // used directly. Never treat an external URL as a storage path.
+  const storageUrl = propertyMediaUrl(visual.path);
+  const resolvedUrl = storageUrl ?? visual.externalUrl ?? null;
+
   return {
     id: visual.id,
     kind: visual.kind,
-    url: propertyMediaUrl(visual.path),
+    url: resolvedUrl,
     externalUrl: visual.externalUrl,
     posterUrl: propertyMediaUrl(visual.posterPath),
     caption: visual.caption,

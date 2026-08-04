@@ -1,6 +1,6 @@
 # Database Schema — Dreame
 
-Generated from `supabase/migrations/0001…0004`. Apply the files in order;
+Generated from `supabase/migrations/0001…0005`. Apply the files in order;
 reverting is not supported (drop and re-create in development).
 
 Naming: `snake_case` tables in the `public` schema. Every `updated_at` is kept
@@ -139,6 +139,9 @@ rows — invented testimonials are an integrity issue, not a content gap.
 check, `source`, `consent_to_contact`, `status` (`new | read | replied |
 archived`, defaults to `new`). No public reads, updates or deletes — insert
 only.
+
+Length constraints (from `0005`): `name` ≤ 120, `email` ≤ 254 (RFC 5321),
+`message` ≤ 4000, `source` ≤ 50, `phone` format `^[0-9+() \-]{6,25}$`.
 
 ## Relationships
 

@@ -31,13 +31,48 @@ import type {
 /** Architectural drawing to render while a property has no photography yet. */
 const DEFAULT_PLACEHOLDER: ArchitecturalVariant = "single-storey";
 
+/**
+ * Determines the architectural placeholder variant for a property.
+ *
+ * This is a heuristic based on the property's slug and physical attributes.
+ * It does NOT infer architecture from unrelated fields like `description_source`.
+ * A future admin column (e.g. `building_type`) would make this explicit.
+ */
 function placeholderFor(row: PropertiesRow): ArchitecturalVariant {
-  if (row.description_source !== null || row.slug.includes("townhouse")) {
+  const slug = row.slug.toLowerCase();
+  const name = (row.name ?? "").toLowerCase();
+
+  // Explicit typology keywords in slug or name
+  if (slug.includes("townhouse") || name.includes("townhouse")) {
     return "townhouse";
   }
-  if (row.slug.includes("double") || row.slug.includes("two-storey")) {
+  if (
+    slug.includes("double-storey") ||
+    slug.includes("two-storey") ||
+    name.includes("double storey") ||
+    name.includes("two storey")
+  ) {
     return "double-storey";
   }
+
+  // Compact land with relatively large house — likely a townhouse typology
+  if (
+    row.land_size_sqm > 0 &&
+    row.land_size_sqm < 300 &&
+    isFiniteNumber(row.house_size_sqm)
+  ) {
+    return "townhouse";
+  }
+
+  // Large house size relative to land suggests multiple levels
+  if (
+    isFiniteNumber(row.house_size_sqm) &&
+    row.land_size_sqm > 0 &&
+    row.house_size_sqm > row.land_size_sqm * 0.55
+  ) {
+    return "double-storey";
+  }
+
   return DEFAULT_PLACEHOLDER;
 }
 

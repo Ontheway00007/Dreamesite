@@ -20,18 +20,23 @@ import type { PropertySource } from "@/lib/properties/source";
 
 /* --- Column sets --------------------------------------------------------- */
 
-/** Enough for cards, the map and the list. No description body, no children. */
+/**
+ * Enough for cards, the map and the list. Includes image metadata so the
+ * mapper can find the hero image and choose the placeholder variant.
+ * No description body, no resources, no testimonials.
+ */
 const SUMMARY_SELECT = `
   id, slug, name, summary, status, suburb, state,
   bedrooms, bathrooms, car_spaces, land_size_sqm, house_size_sqm,
   price_display, completion_label, is_featured, display_priority,
   display_is_home, display_opening_note, current_stage_id,
+  description_source,
   location: property_public_locations (
     location_visibility, public_latitude, public_longitude,
     public_address, marker_mode, location_label, accuracy_note,
     allow_directions
   ),
-  images: property_images (storage_path)
+  images: property_images (id, image_type, storage_path, external_url, alt_text, caption, sort_order, is_published)
 `;
 
 /** Everything the detail page needs, including description and children. */
@@ -174,13 +179,21 @@ export async function getSupabaseRelated(
     return [];
   }
 
-  const current = await getSupabasePropertyBySlug(slug);
+  // Only need the suburb for ordering — avoid loading the full detail graph.
+  const client = createSupabaseCatalogClient();
+  const result = await client
+    .from("properties")
+    .select("suburb")
+    .eq("is_published", true)
+    .eq("slug", slug)
+    .maybeSingle();
 
-  if (!current) {
+  if (result.error || !result.data) {
     return [];
   }
 
-  const client = createSupabaseCatalogClient();
+  const currentSuburb = (result.data as { suburb: string }).suburb;
+
   const rows = await maybeRows(
     `Failed to load related properties for "${slug}" from Supabase.`,
     client
@@ -194,10 +207,10 @@ export async function getSupabaseRelated(
 
   const others = (rows as unknown as SummaryRow[]).map(mapSummaryRow);
   const sameSuburb = others.filter(
-    (property) => property.suburb === current.suburb,
+    (property) => property.suburb === currentSuburb,
   );
   const elsewhere = others.filter(
-    (property) => property.suburb !== current.suburb,
+    (property) => property.suburb !== currentSuburb,
   );
 
   return [...sameSuburb, ...elsewhere].slice(0, limit);
