@@ -29,7 +29,6 @@ function input(overrides: Partial<PropertyInput> = {}): PropertyInput {
     landSizeSqm: 448,
     houseSizeSqm: 212,
     isFeatured: false,
-    isPublished: false,
     displayPriority: 10,
     displayIsHome: false,
     ...overrides,

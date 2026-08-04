@@ -215,6 +215,96 @@ export interface PropertyDescription {
   readonly source: "written" | "ai-assisted";
 }
 
+/* -------------------------------------------------------------------------- */
+/* Construction updates                                                       */
+/* -------------------------------------------------------------------------- */
+
+/** Build stages an update may describe. Mirrors the database vocabulary. */
+export type ConstructionStageId =
+  | "planning"
+  | "site-preparation"
+  | "slab"
+  | "frame"
+  | "lock-up"
+  | "fixing"
+  | "final-inspection"
+  | "completion";
+
+export type ConstructionUpdateStatus = "planned" | "in-progress" | "complete";
+
+/**
+ * One editorial entry in a home's build diary.
+ *
+ * Distinct from the derived timeline in `lib/properties/construction-progress.ts`,
+ * which infers position from `currentStageId` against the company's documented
+ * process. These are written per home and, when present, are what the public
+ * page shows — a real record rather than an inference.
+ */
+export interface PropertyConstructionUpdate {
+  readonly id: string;
+  readonly stage: ConstructionStageId;
+  readonly title: string;
+  readonly description?: string;
+  readonly status: ConstructionUpdateStatus;
+  /** 0–100, when progress is tracked for this stage. */
+  readonly progressValue?: number;
+  /** ISO timestamp of when the work happened, when recorded. */
+  readonly occurredAt?: string;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Features                                                                   */
+/* -------------------------------------------------------------------------- */
+
+/** Feature groups, which become headings on the property page. */
+export type PropertyFeatureCategory =
+  | "highlight"
+  | "inclusion"
+  | "specification"
+  | "material"
+  | "energy"
+  | "design";
+
+/**
+ * A richer specification than the fixed columns can express.
+ *
+ * "Energy rating — 7 stars", or a label alone where none is needed:
+ * "Double glazing throughout".
+ */
+export interface PropertyFeature {
+  readonly id: string;
+  readonly category: PropertyFeatureCategory;
+  readonly label: string;
+  readonly value?: string;
+}
+
+/** Features of one category, ready to render as a section. */
+export interface PropertyFeatureGroup {
+  readonly category: PropertyFeatureCategory;
+  readonly heading: string;
+  readonly features: readonly PropertyFeature[];
+}
+
+/* -------------------------------------------------------------------------- */
+/* SEO                                                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Per-property metadata overrides.
+ *
+ * Every field is optional because null means "fall back": the resolver in
+ * `lib/seo/metadata.ts` tries the override, then the property's own content,
+ * then the site default.
+ */
+export interface PropertySeo {
+  readonly metaTitle?: string;
+  readonly metaDescription?: string;
+  /** Resolved absolute URL of the chosen social image, when it is publishable. */
+  readonly ogImageUrl?: string;
+  readonly canonicalUrl?: string;
+  readonly noindex: boolean;
+}
+
 /** Display home details, when a property is open to visit. */
 export interface DisplayHomeDetails {
   readonly isDisplayHome: boolean;
@@ -270,6 +360,15 @@ export interface PropertyBase {
   /** Brochures and floor plan documents. */
   readonly documents?: readonly PropertyDocument[];
   readonly testimonials?: readonly PropertyTestimonial[];
+  /**
+   * Published build-diary entries, in display order. When present the public
+   * timeline shows these; when absent it falls back to the derived one.
+   */
+  readonly constructionUpdates?: readonly PropertyConstructionUpdate[];
+  /** Published features, already grouped by category. */
+  readonly featureGroups?: readonly PropertyFeatureGroup[];
+  /** Metadata overrides. Absent when the property uses only fallbacks. */
+  readonly seo?: PropertySeo;
   readonly displayHome?: DisplayHomeDetails;
   /**
    * The build stage currently under way, matching an id in `content/process.ts`.

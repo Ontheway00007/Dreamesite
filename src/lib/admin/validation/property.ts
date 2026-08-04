@@ -36,7 +36,12 @@ export interface PropertyInput {
   readonly priceDisplay?: string;
   readonly completionLabel?: string;
   readonly isFeatured: boolean;
-  readonly isPublished: boolean;
+  /*
+    `isPublished` is deliberately not here. Publication is not a property field
+    an editor submits — it is an operation with a readiness gate, performed by
+    `publishPropertyAction` under a row lock. Accepting it as input would invite
+    a save path that publishes.
+  */
   readonly displayPriority: number;
   readonly displayIsHome: boolean;
   readonly displayOpeningNote?: string;

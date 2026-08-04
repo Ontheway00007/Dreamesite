@@ -86,6 +86,10 @@ supabase gen types typescript --linked > src/types/database.ts
 # against a local stack instead:
 supabase start
 supabase db reset         # re-applies migrations and runs supabase/seed.sql
+
+# no CLI and no containers? apply everything to a throwaway local cluster
+# and run the assertion suites:
+sudo sh supabase/verify/run-local.sh
 ```
 
 When the CLI is unavailable, run the files in `supabase/migrations/` in order
@@ -234,8 +238,31 @@ competing `is_hero` boolean: two mechanisms would eventually disagree.
   other card shows a photograph reads as a fault.
 - Either source kind is acceptable; an externally hosted hero is as valid as an
   uploaded one.
-- Removing the hero falls back to the architectural drawing, which is a valid
-  presentation rather than a gap.
+- Removing the hero leaves the card with no photograph. A floor plan is never
+  substituted, for the same reason it cannot be promoted.
+
+**Promotion requires a publishable image.** Migration `0010` replaced the
+`0009` version of `set_property_hero_image()`, which would promote any image
+belonging to the property. It now refuses one that is unpublished, has no alt
+text, is a floor plan, belongs to another property, or has neither a storage
+path nor an external URL.
+
+Requiring *published* before promotion was chosen over publishing the image as
+a side effect of promotion. "Set as hero" silently making a photograph public is
+a bigger decision than choosing among images that are already public, and it is
+not the decision the button appears to offer.
+
+**Legacy heroes are not repaired.** The migration does not demote heroes that
+predate these rules. They are already invisible publicly — `mapPropertyRow`
+filters unpublished images — and demoting them would discard a deliberate
+choice. Instead the admin surfaces the state: the media manager reports a
+designated hero that is still a draft as *not visible yet*, and one that is live
+without alt text as needing a description. The media overview page shows the
+same three states across the whole catalogue.
+
+Floor-plan rejection is checked at promotion only. Once an image is promoted its
+`image_type` becomes `hero`, so what it was before is unrecoverable — there is
+nothing a later repair pass could look at.
 
 ### Ordering
 
@@ -278,6 +305,27 @@ and `mapPropertyRow` filters unpublished rows regardless of who queried. The
 second exists so "draft media never becomes public media" is a property of the
 mapping rather than only of the caller.
 
+**Publishing is one call, not a check followed by a write.** `publishPropertyAction`
+invokes `publish_property_if_ready(uuid)`, which takes `FOR UPDATE` on the
+property row, evaluates `property_publish_blockers()`, updates, and writes the
+audit entry — all inside one transaction.
+
+The previous shape read the blockers, decided, and updated separately. Between
+those two steps a location could be deleted or an image unpublished, and the
+property would be published without qualifying. Two administrators working at
+once is enough to hit it.
+
+The function returns the blockers rather than raising, so "not ready yet" arrives
+as data and is shown as a checklist. `getPublishBlockers()` still exists for the
+editor's readiness panel, which is a display concern where a stale answer costs
+nothing.
+
+`is_published` is no longer part of the property update path at all. `toRow()`
+does not carry it and `PropertyInput` does not accept it, so the only routes to
+public visibility are the publish and unpublish actions. A form that could
+publish would need its own readiness check, and that check would have the same
+gap the RPC exists to close.
+
 ## Authentication & Admin
 
 The admin system lives at `/admin` and uses Supabase Auth with email/password.
@@ -311,13 +359,13 @@ The admin system lives at `/admin` and uses Supabase Auth with email/password.
 | ------------------------- | --------------------------------------- |
 | `/admin/login`            | Email/password login                    |
 | `/admin/unauthorized`     | Shown when user is not an admin         |
-| `/admin`                  | Dashboard overview                      |
+| `/admin`                  | Counts, and a worklist of what needs attention |
 | `/admin/properties`       | Property listing with sort/filter/search |
 | `/admin/properties/new`   | Create a new property                   |
-| `/admin/properties/[id]`  | Edit an existing property               |
-| `/admin/enquiries`        | Enquiry management (placeholder)        |
-| `/admin/media`            | Media library info                      |
-| `/admin/settings`         | Settings (placeholder)                  |
+| `/admin/properties/[id]`  | Edit a property: details, location, media, build timeline, features, search |
+| `/admin/enquiries`        | Enquiry queue: search, status filter, notes |
+| `/admin/media`            | Cross-catalogue media worklist          |
+| `/admin/settings`         | Business details, search defaults, site notice |
 
 ### Roles
 
@@ -487,6 +535,300 @@ should be able to perform.
   them into an `or=` expression would let a comma or parenthesis add filters
   the caller never wrote; `lib/admin/search.ts` prevents it, and sort columns
   come from an allow-list because identifiers cannot be parameterised.
+
+## Content: build timeline and features
+
+Two child tables carry the editorial detail the fixed property columns cannot.
+
+### Build timeline
+
+`construction_updates` holds one entry per build stage, from a fixed vocabulary
+of eight: planning, site preparation, slab, frame, lock-up, fixing, final
+inspection, completion. A stage may appear at most once per property, enforced by
+a unique index.
+
+The vocabulary is a `CHECK` rather than an enum. Widening a `CHECK` is a
+constraint change; widening an enum is a type alteration with more awkward
+migration semantics, and the list is expected to grow.
+
+The public page prefers the recorded diary and falls back to the company's
+documented process:
+
+- **With published updates**, `resolveConstructionTimeline()` shows those,
+  re-sorted into build order so a diary written out of sequence still reads
+  forwards. Each entry is numbered by its position in the whole vocabulary, so a
+  skipped stage shows as a gap rather than being silently closed up.
+- **With none**, it derives the timeline from `currentStageId` against
+  `content/process.ts` — the same process the homepage explains. The page
+  discloses which it is showing, so a standard process is never mistaken for this
+  home's record.
+
+Overall completion divides by the whole stage vocabulary, not by the number of
+updates recorded. Averaging over recorded updates only would report a home with
+one completed planning entry as 100% built. Counting unrecorded stages as zero
+understates rather than overstates, which is the safe direction for a claim a
+buyer may rely on. A property whose `status` says the build has finished reads
+100% regardless — the business's own statement about the home outranks an
+incomplete diary.
+
+Nothing in the component is fixed to a stage count. Both paths read their length
+from their source.
+
+### Features
+
+`property_features` holds `category`, `label` and an optional `value`, where the
+six categories become headings on the property page: highlights, inclusions,
+specifications, materials and finishes, energy and comfort, design.
+
+A closed vocabulary because each category *is* a section. Free text would produce
+a page of one-item groups, each with its own heading.
+
+- A label with no value is legitimate — "Double glazing throughout" is a complete
+  statement — and renders as one rather than being padded out.
+- Reordering is scoped to a category. `reorder_property_features()` verifies both
+  the property and the category for every id, so an item cannot be moved into
+  another group by reordering.
+- Moving a feature between categories recomputes its position in the new group;
+  keeping the old `sort_order` would drop it somewhere arbitrary.
+- A label that duplicates a fixed column — "Bedrooms", "Land size" — raises an
+  advisory, not an error. "Bedrooms — 4, all with built-in robes" says more than
+  the figure the specifications table already shows, so the decision is the
+  administrator's.
+
+Groups with no published features do not render. An empty heading is worse than
+no heading.
+
+## Enquiries
+
+### The public form
+
+A real form posting to a Server Action, replacing the `mailto:` link that stood
+in for it. A mailto depends on the visitor having a mail client configured,
+produces nothing the business can assign or track, and loses the enquiry
+silently when it fails.
+
+- It is a `<form action={serverAction}>` with `useActionState`, so it submits and
+  reports errors before hydration.
+- Every field has a `<label>`; errors attach via `aria-describedby` and
+  `aria-invalid`; the outcome is announced in a live region.
+- On a validation failure the typed values are returned and re-rendered, so
+  nothing has to be retyped.
+- **It inserts as `anon`, not with the service role.** The row goes through the
+  same anonymous policy a browser would use, so the database enforces
+  `status = 'new'`, refuses `admin_notes`, and refuses a property that is not
+  published. A mistake in the action cannot produce a row the policy would have
+  rejected.
+
+### Anti-abuse: what it is and is not
+
+Two checks: a honeypot field (`company_website`) hidden from sight, from
+assistive technology and from the tab order, and a render timestamp used to
+reject submissions completed implausibly fast or held open for more than two
+hours.
+
+**These are friction, not security.** Both values are supplied by the client. A
+script can leave the honeypot empty and send a timestamp three seconds old. They
+stop the indiscriminate form-filling that makes up most spam and nothing more.
+What would raise the bar — a signed nonce, or per-IP counting in shared storage —
+is not implemented, and no rate limiting is claimed.
+
+A *missing* timestamp is not treated as a signal. The field is populated by an
+effect when the form mounts rather than rendered by the server, because these
+pages are cached and a server timestamp would arrive stale and read as expired.
+That makes absence ambiguous: a visitor with JavaScript disabled submits without
+it, and so does a script that strips hidden fields. Rejecting on absence would
+block the visitor while costing the script one line. The honeypot is the hard
+check; timing refines it when a timestamp is present.
+
+### The spam signal is derived, not stored
+
+A message containing a link is flagged in the admin list. That flag is computed
+on read by `looksLikeSpam()`, not written at submission time.
+
+Storing it was considered and rejected. The submitter inserts as `anon`, and the
+insert policy would have to either permit them to set the column — letting a
+spammer mark their own message clean — or forbid it, in which case nothing on the
+public path could set it. Deriving it also means the heuristic can be improved
+without a migration or a backfill.
+
+### Staff notes and the write path they opened
+
+`enquiries.admin_notes` is staff-facing and never published — the table has no
+anonymous `SELECT` policy.
+
+Adding it opened a write path worth naming. `enquiries` has an anonymous
+`INSERT` policy and migration `0003` grants `INSERT` at table level, and a
+table-level grant covers every column, including ones added later. As written, a
+member of the public could have submitted an enquiry with `admin_notes` already
+populated — text staff would read as if a colleague had written it.
+
+A column-level `REVOKE` does not help: while the table-level grant exists,
+per-column privileges are not consulted. Revoking the table grant and granting
+each column individually would break the form every time a column was added. So
+migration `0010` replaces both insert policies with ones that require
+`admin_notes is null`, listing the columns a submitter may decide.
+
+### Retention
+
+**There is no delete, anywhere.** No `DELETE` policy exists on `enquiries` for
+any role, and the admin interface offers no destroy action. Archiving takes an
+enquiry out of the queue while keeping the record of the question that was asked.
+
+A permanent deletion route belongs with a written retention policy. Until the
+business has one, there is nothing in the interface that can quietly destroy
+someone's enquiry. The enquiry list says so on the page, rather than leaving an
+administrator hunting for a button that was deliberately omitted.
+
+### What the audit log records
+
+That an administrator changed an enquiry, and nothing about the person who sent
+it. No name, no email address, no phone number, no message text — and not even
+the length of the message. A second copy of someone's personal data inside an
+append-only table nobody can edit is a liability, not a control. The enquiry's own
+id is enough to find the record.
+
+Server logs follow the same rule: a failed insert logs the PostgREST error code
+and message, never the row.
+
+## SEO
+
+### The chain
+
+Every metadata field resolves in the same order, and the order is the design:
+
+1. **The administrator's override**, from the property's Search tab.
+2. **The property's own content** — name, suburb, summary, status, hero
+   photograph. Correct for almost every home, which is why the override is
+   usually blank.
+3. **The site default**, from Settings, then the values in `site-config.ts`.
+
+`lib/seo/metadata.ts` owns all three levels. `derivePropertyMetadata()` is level
+2 and takes a structural type rather than a full `Property`, so the admin editor
+can preview exactly what the live page will produce instead of deriving it
+separately — two independent derivations is how a preview and a page drift apart.
+
+### Social images
+
+`seo_og_image_id` is checked against the database before it is saved:
+`checkOgImageEligibility()` refuses an image belonging to another property, one
+with no file or link, an unpublished one, and a floor plan.
+
+A social preview is fetched by third parties from a public URL with no session, so
+a draft image would be a broken preview everywhere the link is shared. That is
+refused rather than warned about. With no override the hero is used, and
+`heroImageUrl()` already declines to return a floor plan or an unpublished image.
+
+There is deliberately no site-wide fallback image for property pages. A generic
+banner on every property link looks like the wrong home rather than none.
+
+If the chosen image later becomes ineligible — unpublished, deleted,
+recategorised — the mapper stops resolving it and the page falls back to the hero.
+The editor reports the stored choice as no longer usable rather than showing
+"Hero photograph" as though nothing were set.
+
+### `noindex`
+
+`robots` is set on a property page only when the property is marked noindex.
+Leaving it unset otherwise lets the root layout's site-wide rule apply, which
+asks preview and local deployments not to be indexed. Overriding it per page
+would publish every property page from a preview URL.
+
+## Site settings
+
+One row of typed configuration, using the `id boolean primary key check (id)`
+idiom: `true` is the only value satisfying both the check and uniqueness, so the
+table cannot hold two rows.
+
+### Why not key/value
+
+A key/value store has no validation, no type safety, and nothing stopping a
+secret being written into it. The model is a fixed set of typed columns, which is
+the **primary** defence against a credential ending up in a table the public site
+reads: there is no column an API key belongs in.
+
+The secondary defence is `detectSecret()`, which recognises JWTs, Supabase keys,
+Stripe-style keys, PEM blocks, AWS access keys, GitHub tokens and
+`key = value` credential shapes. It runs in the validator on save and live in the
+form as the administrator types. It is a heuristic and is not exhaustive — an
+exhaustive definition of "looks like a secret" does not exist — but it catches the
+realistic accident of pasting a key into a field while moving configuration
+around.
+
+### The public view
+
+`site_settings` is administrator-only under RLS. The public site reads
+`site_settings_public`, a view that omits `enquiry_recipient_email`.
+
+A view is necessary because RLS is row-level: granting the public site access to
+the table would expose every column of the single row, including the internal
+routing address. The view gives column granularity, and its `select` list is the
+decision about what is public — adding a column there publishes it.
+
+### Fallbacks
+
+`siteConfig` stays the floor. It is compiled in, always present, and reviewed in
+a pull request, which is what you want for the legal name and the description.
+The settings row overrides the handful of values a business legitimately changes
+without a deploy: phone number, email address, address to display, a site-wide
+notice.
+
+A null column **falls back** rather than blanking the value. An administrator
+clearing a field by accident cannot leave the site with no contact details.
+`getPublicSettings()` never throws either — a settings table that is briefly
+unreachable logs and returns the defaults rather than taking the site down.
+
+It is wrapped in React's `cache`, so the notice, the header and the footer share
+one read per request.
+
+### No default map centre
+
+Deliberately absent. The explorer fits its viewport to the properties it is
+showing, which is strictly better than a stored centre — a stored centre goes
+stale the moment the business builds in a new suburb, and nothing would say so. A
+setting with no reader is worse than no setting.
+
+## Dashboard and media overview
+
+### Counts
+
+Every dashboard figure is a `head: true` count:
+`select("id", { count: "exact", head: true })`. No rows are transferred; the
+count arrives in the `Content-Range` header. On `enquiries` that matters — the
+alternative moves names, email addresses and message bodies across the network to
+render a card that says "12".
+
+`missingLocation` is the difference between the `properties` and
+`property_location_settings` counts. The relationship is at most one row per
+property, so the difference is exactly the number with none — and publishing is
+blocked without one.
+
+If any single count fails, the whole set is reported as failed. A dashboard
+showing three real numbers and one zero is worse than one saying it could not
+load.
+
+There are no charts. A builder with a dozen homes gains nothing from a graph, and
+a graph would need the row data these counts exist to avoid transferring.
+
+The dashboard leads with a "needs attention" list built only from conditions that
+are actionable — unread enquiries, properties with no location, images without
+alt text, drafts. Each links to the filtered page where the work happens, and
+nothing appears at zero.
+
+### The media page
+
+Uploading and ordering stay in the property editor, where the image sits next to
+the home it belongs to. The global page answers the question that could not be
+asked there: across the whole catalogue, what is missing?
+
+It lists every property with its image and document counts, its hero state
+(*live*, *not visible*, *not set*) and any outstanding alt text, ordered with
+outstanding work first. It is a worklist that links into each property's Media
+tab — not a second uploader, and not a page saying the work happens elsewhere.
+
+It reads three narrow projections and aggregates them in one pass, rather than
+issuing a query per property. The row cap is explicit: past it, the page says the
+totals are partial instead of quietly under-reporting.
+
 
 ## Caching
 
@@ -704,13 +1046,23 @@ so the dashboard and the public site can never describe a setting differently.
 ```
 src/
   app/
-    properties/            Map and listing route, plus the temporary detail route
+    admin/                 Login, unauthorized, and the (dashboard) route group
+    properties/            Map and listing route, plus the property detail route
   components/
-    layout/                Container, Section, SiteHeader, SiteFooter
+    admin/
+      content/             Build timeline and feature managers
+      enquiries/           Enquiry queue: filters bar and list
+      media/               Per-property media manager
+      seo/                 Per-property search settings
+      settings/            Site settings form
+      admin-alert.tsx      One banner component for all four tones
+      form-controls.tsx    Field / Toggle / Checkbox with the ARIA wiring
+    enquiry/               The public enquiry form
+    layout/                Container, Section, SiteHeader, SiteFooter, SiteNotice
     map/                   PropertyMap (dynamic), loader, fallback, legend
     media/                 ArchitecturalFrame line drawings (image placeholders)
     motion/                Reveal / RevealGroup (Framer), AnimatedText (CSS), Parallax (GSAP)
-    property/              Card, list, filters, preview, sheets, explorer
+    property/              Card, list, filters, preview, sheets, explorer, detail sections
     sections/              One file per homepage section
     ui/                    Button, SectionHeading, Statistic, Timeline, typography
   content/                 Editable content: properties, process, statistics
@@ -718,12 +1070,24 @@ src/
     use-gsap.ts            Scoped, auto-reverting GSAP contexts
     use-property-filters.ts  Filter and view state, synced to the URL
   lib/
+    admin/
+      actions/             Server Actions, one file per entity
+      validation/          Shared validators mirroring the database constraints
+      *-repository.ts      Admin reads, one per concern (property, media, content,
+                           enquiry, settings, metrics)
+      audit.ts             Append-only audit log writes
+      auth.ts              requireAdmin() — server-side authorization
+      search.ts            PostgREST filter escaping and sort allow-lists
     animation/             Shared easings, durations, Framer variants, GSAP setup
     design/                Property status presentation tokens
+    enquiries/             Public submission action and its form-state contract
     images/                Supabase Storage URL resolution for property media
     map/                   Map config, GeoJSON building, marker artwork
+    media/                 Upload configuration and validation
     properties/            Data sources + repository + row mappers + filters + privacy (+ tests)
-    supabase/              Browser, server and catalogue clients
+    seo/                   The metadata fallback chain
+    settings/              Public settings resolution over site-config defaults
+    supabase/              Browser, server, catalogue and admin clients
     env.ts                 Typed, validated environment access
     routes.ts              Internal path construction
     site-config.ts         Brand details, navigation, service areas
@@ -731,16 +1095,35 @@ src/
   providers/
     app-providers.tsx            Client boundary: MotionConfig + smooth scroll
     smooth-scroll-provider.tsx   Lenis + ScrollTrigger integration
-  types/                   Shared domain types
+  types/                   Shared domain types and generated database rows
 ```
 
 ## Tests
 
-`npm test` covers the pure logic the map and listing depend on: filtering and
-URL round-tripping, GeoJSON generation, the location-privacy transform and slug
-lookup. Tests live beside the code as `*.test.ts`. There is no component or
-browser test setup — that would be a much heavier commitment than the current
-surface justifies.
+`npm test` covers the pure logic behind the site: listing filters and URL
+round-tripping, GeoJSON generation, the location-privacy transform, slug lookup,
+row mapping, media configuration and path validation, admin search escaping,
+error handling, the construction timeline, the metadata chain, and every
+validation module — property, location, media, construction, features, enquiry,
+SEO and settings.
+
+Tests live beside the code as `*.test.ts`. There is no component or browser test
+setup — that would be a much heavier commitment than the current surface
+justifies — so what is *not* covered is worth stating plainly: no React component
+renders in a test, no Server Action executes, and nothing exercises PostgREST or
+the Storage HTTP API.
+
+The database layer is covered separately by the SQL harness in
+`supabase/verify/`, which **has been run** against PostgreSQL 15 and passes:
+
+```bash
+sudo sh supabase/verify/run-local.sh
+```
+
+That run found two defects that review had missed across two phases — migration
+`0001` did not parse, and `property_publish_blockers()` raised on any incomplete
+property. Both are recorded in `supabase/verify/README.md`. Worth remembering the
+next time SQL looks obviously correct.
 
 Every component takes typed props and no component reaches into global state.
 Sections compose primitives; primitives never know which section they are in.
@@ -756,7 +1139,7 @@ Three things still need the business to confirm them:
 
 | Where                    | What needs to happen                                                                                                                                    |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `site-config.ts`         | The email address and phone number are placeholders, and they are the only contact points on the site. Confirm both before launch.                        |
+| `site-config.ts`         | The email address and phone number are placeholders. They are the fallback the site uses until the business fills in Settings, and are still what is published if it never does. Confirm both before launch. |
 | `content/properties.ts`  | Ten fictional concept façades with demonstration coordinates, used only when Supabase is not configured. The live source is the database; replace this file with documentation once it is retired. |
 | `supabase/seed.sql`      | The same concept content in database form. Replace with real records (and review every privacy setting) before public launch.                          |
 

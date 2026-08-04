@@ -13,7 +13,14 @@ const navigation = [
   { name: "Settings", href: "/admin/settings", icon: SettingsIcon },
 ] as const;
 
-export function AdminSidebar({ currentUser }: { currentUser: AdminUser }) {
+export function AdminSidebar({
+  currentUser,
+  /** Unread enquiries, or null when the count could not be read. */
+  newEnquiryCount,
+}: {
+  currentUser: AdminUser;
+  newEnquiryCount?: number | null;
+}) {
   const pathname = usePathname();
 
   return (
@@ -50,6 +57,17 @@ export function AdminSidebar({ currentUser }: { currentUser: AdminUser }) {
                 className={`h-5 w-5 shrink-0 ${isActive ? "text-accent" : "text-foreground-subtle group-hover:text-foreground-muted"}`}
               />
               {item.name}
+
+              {/* Only on Enquiries, and only when something is waiting — a
+                  permanent "0" is not information. */}
+              {item.href === "/admin/enquiries" &&
+                typeof newEnquiryCount === "number" &&
+                newEnquiryCount > 0 && (
+                  <span className="bg-accent/20 text-accent ml-auto rounded-full px-2 py-0.5 text-[10px] font-semibold tabular-nums">
+                    {newEnquiryCount}
+                    <span className="sr-only"> unread</span>
+                  </span>
+                )}
             </Link>
           );
         })}

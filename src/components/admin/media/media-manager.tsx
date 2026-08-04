@@ -213,7 +213,8 @@ export function MediaManager({
           </h3>
           <p className="text-foreground-subtle mt-1 text-xs">
             Used on cards, the map preview and social shares. Choose one with
-            “Make main image” in any photography section below.
+            “Make main image” in any photography section below. It must be a
+            published photograph with alt text before visitors see it.
           </p>
         </header>
 
@@ -221,6 +222,37 @@ export function MediaManager({
 
         {hero ? (
           <>
+            {/*
+              A designated hero is not necessarily a visible one.
+
+              Publishing an image now requires alt text, and the public mapper
+              filters unpublished images out — so a hero can be chosen and still
+              show nothing to a visitor. Migration 0010 deliberately does not
+              demote those rows: the choice was intentional and discarding it
+              would lose information. Reporting the state is this component's
+              job, because "no main image" would send the administrator to set
+              one that is already set.
+            */}
+            {!hero.isPublished ? (
+              <AdminAlert tone="warning" title="This main image is not visible yet">
+                <p className="mt-1">
+                  It is chosen, but still a draft, so cards and social previews
+                  show no photograph. Publish it below to make it live
+                  {hero.altText === null || hero.altText.trim() === ""
+                    ? " — it needs alt text first."
+                    : "."}
+                </p>
+              </AdminAlert>
+            ) : hero.altText === null || hero.altText.trim() === "" ? (
+              <AdminAlert tone="warning" title="This main image has no alt text">
+                <p className="mt-1">
+                  It is live, but described to nobody using a screen reader. Newer
+                  images cannot be published without alt text; this one predates
+                  that rule. Add a description below.
+                </p>
+              </AdminAlert>
+            ) : null}
+
             <ul className="space-y-3">
               <MediaItemCard
                 kind="image"
@@ -259,9 +291,11 @@ export function MediaManager({
         ) : (
           <AdminAlert tone="info" title="No main image chosen">
             <p className="mt-1">
-              Cards and social previews will show the architectural drawing.
-              That is a valid presentation — a photograph is not required to
-              publish.
+              Cards and social previews will show no photograph. A floor plan is
+              never used as a stand-in — as the single image representing the
+              home it reads as a fault — so this home will appear without one
+              until a photograph is chosen. That is a valid state: a photograph
+              is not required to publish.
             </p>
           </AdminAlert>
         )}

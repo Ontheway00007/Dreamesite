@@ -1,4 +1,4 @@
-import { CtaSection } from "@/components/sections/cta-section";
+import { EnquirySection } from "@/components/sections/enquiry-section";
 import { FeaturedProperties } from "@/components/sections/featured-properties";
 import { Hero } from "@/components/sections/hero";
 import { MapPreviewSection } from "@/components/sections/map-preview-section";
@@ -6,7 +6,6 @@ import { ProcessSection } from "@/components/sections/process-section";
 import { ServiceAreasSection } from "@/components/sections/service-areas-section";
 import { StatisticsSection } from "@/components/sections/statistics-section";
 import { StatusSection } from "@/components/sections/status-section";
-import { siteConfig } from "@/lib/site-config";
 
 export const revalidate = 300;
 
@@ -28,19 +27,11 @@ export default function HomePage() {
       <StatisticsSection />
       <ServiceAreasSection />
 
-      <CtaSection
+      <EnquirySection
         id="contact"
-        eyebrow="Contact"
         title="Tell us the suburb. We will tell you what is available."
         body="Send through the area and timeframe you are considering and our team will reply with the homes that genuinely match."
-        primary={{
-          label: "Email our team",
-          href: `mailto:${siteConfig.contact.email}`,
-        }}
-        secondary={{
-          label: siteConfig.contact.phone,
-          href: `tel:${siteConfig.contact.phone.replace(/\s/g, "")}`,
-        }}
+        source="homepage"
       />
     </>
   );

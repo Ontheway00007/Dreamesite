@@ -50,6 +50,15 @@ const DUPLICABLE_COLUMNS = `
 `;
 
 /** Maps validated input onto the `properties` row shape. */
+/**
+ * The property row, minus `is_published`.
+ *
+ * Public visibility is deliberately absent. It is changed only by
+ * `publishPropertyAction` and `unpublishPropertyAction` — the first of which
+ * checks readiness and flips the flag under one row lock. Including it here
+ * would give the ordinary save path a second route to publication, one that
+ * checks readiness separately from the write and so can act on a stale answer.
+ */
 function toRow(data: PropertyInput): Record<string, unknown> {
   return {
     name: data.name,
@@ -68,7 +77,6 @@ function toRow(data: PropertyInput): Record<string, unknown> {
     price_display: data.priceDisplay ?? null,
     completion_label: data.completionLabel ?? null,
     is_featured: data.isFeatured,
-    is_published: data.isPublished,
     display_priority: data.displayPriority,
     display_is_home: data.displayIsHome,
     display_opening_note: data.displayOpeningNote ?? null,
@@ -127,11 +135,10 @@ export async function createPropertyAction(
     };
   }
 
-  // A brand-new property has no location settings and therefore no public
-  // projection, so it cannot be published in the same breath as being
-  // created. Forcing it to draft here is clearer than letting the publish
-  // gate reject it a moment later.
-  const row = { ...toRow(input), is_published: false };
+  // A new property is a draft: it has no location settings and therefore no
+  // public projection. `toRow` does not carry `is_published` at all, so the
+  // column takes its default of false.
+  const row = toRow(input);
 
   const { data: created, error } = await supabase
     .from("properties")
@@ -191,20 +198,6 @@ export async function updatePropertyAction(
       error: "That slug is already in use by another property.",
       fieldErrors: [{ field: "slug", message: "That slug is already in use." }],
     };
-  }
-
-  // Turning `is_published` on through the general update path would bypass
-  // the publish gate, so readiness is checked here too.
-  if (input.isPublished) {
-    const blockers = await readPublishBlockers(supabase, id);
-
-    if (blockers.length > 0) {
-      return {
-        success: false,
-        error: "This property is not ready to publish yet.",
-        blockers,
-      };
-    }
   }
 
   const { error } = await supabase
@@ -287,30 +280,17 @@ export async function deletePropertyAction(
 
 /* --- Publish / unpublish --------------------------------------------- */
 
-/**
- * Reads the publish blockers reported by the database.
- *
- * The check lives in `property_publish_blockers` (migration 0008) rather
- * than here because it needs to see rows across three tables. Doing it in
- * one round trip also means the answer cannot be stale by the time the
- * update runs.
- */
-async function readPublishBlockers(
-  supabase: Awaited<ReturnType<typeof createAdminClient>>,
-  id: string,
-): Promise<string[]> {
-  const { data, error } = await callRpc(supabase, "property_publish_blockers", {
-    p_property_id: id,
-  });
+/*
+  The read-then-update pair that used to live here is gone.
 
-  if (error) {
-    // Fail closed: if readiness cannot be established, do not publish.
-    handleAdminError(`Reading publish blockers for ${id}`, error);
-    return ["Could not confirm this property is ready to publish."];
-  }
-
-  return data ?? [];
-}
+  `readPublishBlockers` fetched the blockers, the caller decided, and a separate
+  update wrote the flag. Between the two, readiness could change. The check and
+  the write are now one call — see `publish_property_if_ready` below. The
+  read-only version of the check still exists in `lib/admin/repository.ts` as
+  `getPublishBlockers`, which the editor uses to show the checklist before
+  anyone presses anything; it is a display concern, so a stale answer there costs
+  nothing.
+*/
 
 export async function publishPropertyAction(
   id: string,
@@ -318,22 +298,25 @@ export async function publishPropertyAction(
   await requireAdmin();
   const supabase = await createAdminClient();
 
-  const blockers = await readPublishBlockers(supabase, id);
+  /*
+    One call, not read-then-update.
 
-  if (blockers.length > 0) {
-    return {
-      success: false,
-      error: "This property is not ready to publish yet.",
-      blockers,
-    };
-  }
+    Checking the blockers here and updating afterwards left a window between the
+    two: a location deleted, or an image unpublished, in the moment between the
+    check passing and the update running would publish a property that no longer
+    qualified. Two administrators working at once is enough to hit it.
 
-  const { data: updated, error } = await supabase
-    .from("properties")
-    .update({ is_published: true } as never)
-    .eq("id", id)
-    .select("slug")
-    .maybeSingle();
+    `publish_property_if_ready` takes `FOR UPDATE` on the property row, then
+    checks, then updates, then audits — all in one transaction. The readiness it
+    checked is the readiness it acted on, and the audit entry cannot record a
+    publication that was rolled back.
+
+    It returns the blockers rather than raising, so "not ready yet" arrives as
+    data and can be shown as a checklist instead of an error.
+  */
+  const { data, error } = await callRpc(supabase, "publish_property_if_ready", {
+    p_property_id: id,
+  });
 
   if (error) {
     return {
@@ -346,17 +329,26 @@ export async function publishPropertyAction(
     };
   }
 
-  if (!updated) {
-    return { success: false, error: "That property no longer exists." };
+  const blockers = (data ?? []) as string[];
+
+  if (blockers.length > 0) {
+    return {
+      success: false,
+      error: "This property is not ready to publish yet.",
+      blockers,
+    };
   }
 
-  await logAuditEvent({
-    action: "published",
-    entityType: "property",
-    entityId: id,
-  });
+  // The RPC wrote the audit entry inside its own transaction, so nothing is
+  // logged here — a second entry would record one publication twice.
 
-  revalidateProperty(id, (updated as unknown as { slug: string }).slug);
+  const { data: published } = await supabase
+    .from("properties")
+    .select("slug")
+    .eq("id", id)
+    .maybeSingle();
+
+  revalidateProperty(id, (published as unknown as { slug: string } | null)?.slug);
 
   return { success: true, id };
 }
@@ -522,10 +514,22 @@ function truncate(value: string, max: number): string {
 }
 
 /** Every surface that can show a property, in one place. */
-function revalidateProperty(id: string, slug: string): void {
+/**
+ * Invalidates every route a property change can affect.
+ *
+ * `slug` is optional because it is not always known — after the publish RPC the
+ * slug comes from a follow-up read that may itself fail. The listing pages are
+ * still revalidated in that case; only the property's own page is skipped, and it
+ * carries its own 5-minute revalidation.
+ */
+function revalidateProperty(id: string, slug?: string): void {
   revalidatePath("/admin/properties");
   revalidatePath(`/admin/properties/${id}`);
   revalidatePath("/properties");
-  revalidatePath(`/properties/${slug}`);
+
+  if (slug) {
+    revalidatePath(`/properties/${slug}`);
+  }
+
   revalidatePath("/");
 }

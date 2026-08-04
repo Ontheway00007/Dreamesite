@@ -102,10 +102,17 @@ function propertyRow(overrides: Partial<PropertyJoinedRow> = {}): PropertyJoined
     current_stage_id: null,
     created_at: "2026-08-03T00:00:00Z",
     updated_at: "2026-08-03T00:00:00Z",
+    seo_meta_title: null,
+    seo_meta_description: null,
+    seo_og_image_id: null,
+    seo_canonical_url: null,
+    seo_noindex: false,
     property_public_locations: null,
     property_images: null,
     property_resources: null,
     property_testimonials: null,
+    construction_updates: null,
+    property_features: null,
     ...overrides,
   };
 }

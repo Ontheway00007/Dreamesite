@@ -48,6 +48,13 @@ export interface PropertiesRow {
   display_is_home: boolean;
   display_opening_note: string | null;
   current_stage_id: string | null;
+  /* SEO overrides, added by migration 0010. Null means "fall back" — see
+     lib/seo/metadata.ts for the three-level resolution chain. */
+  seo_meta_title: string | null;
+  seo_meta_description: string | null;
+  seo_og_image_id: string | null;
+  seo_canonical_url: string | null;
+  seo_noindex: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -210,9 +217,48 @@ export interface EnquiriesRow {
   source: string;
   consent_to_contact: boolean;
   status: "new" | "read" | "replied" | "archived";
+  /** Staff-facing notes. Added by migration 0010. Never published. */
+  admin_notes: string | null;
   created_at: string;
   updated_at: string;
 }
+
+/**
+ * Typed site configuration. Exactly one row, enforced by the boolean primary
+ * key. Administrator-only — the public site reads `site_settings_public`.
+ */
+export interface SiteSettingsRow {
+  id: boolean;
+  company_name: string | null;
+  company_phone: string | null;
+  company_email: string | null;
+  company_address_display: string | null;
+  default_meta_title: string | null;
+  default_meta_description: string | null;
+  default_og_image_url: string | null;
+  social_facebook: string | null;
+  social_instagram: string | null;
+  social_linkedin: string | null;
+  /**
+   * Where enquiry notifications should go. Deliberately absent from
+   * `SiteSettingsPublicRow` — publishing it would attract spam.
+   */
+  enquiry_recipient_email: string | null;
+  maintenance_notice: string | null;
+  updated_at: string;
+}
+
+/**
+ * The public projection of site settings.
+ *
+ * Mirrors the `site_settings_public` view. Adding a field here means adding it
+ * to the view, which publishes it — treat this list as the decision about what
+ * is public.
+ */
+export type SiteSettingsPublicRow = Omit<
+  SiteSettingsRow,
+  "id" | "enquiry_recipient_email" | "updated_at"
+>;
 
 /**
  * PostgREST embedding shape used by the repositories: a property row with
@@ -223,6 +269,8 @@ export interface PropertyJoinedRow extends PropertiesRow {
   property_images: PropertyImagesRow[] | null;
   property_resources: PropertyResourcesRow[] | null;
   property_testimonials: PropertyTestimonialsRow[] | null;
+  construction_updates: ConstructionUpdatesRow[] | null;
+  property_features: PropertyFeaturesRow[] | null;
 }
 
 export interface AdminUsersRow {
@@ -327,8 +375,20 @@ export interface Database {
         Update: Partial<AuditLogRow>;
         Relationships: [];
       };
+      site_settings: {
+        Row: SiteSettingsRow;
+        Insert: Partial<SiteSettingsRow>;
+        Update: Partial<SiteSettingsRow>;
+        Relationships: [];
+      };
     };
-    Views: Record<string, never>;
+    Views: {
+      /** Public-safe subset of site_settings. Readable by anon. */
+      site_settings_public: {
+        Row: SiteSettingsPublicRow;
+        Relationships: [];
+      };
+    };
     Functions: {
       is_admin: {
         Args: Record<string, never>;
@@ -407,6 +467,29 @@ export interface Database {
       is_valid_property_media_path: {
         Args: { object_name: string };
         Returns: boolean;
+      };
+      /**
+       * Publishes a property only if it has no blockers, checking and updating
+       * under one row lock. Returns the blockers when it refuses; an empty
+       * array means it published. See migration 0010.
+       */
+      publish_property_if_ready: {
+        Args: { p_property_id: string };
+        Returns: string[];
+      };
+      /** Rewrites sort_order across one property's construction updates. */
+      reorder_construction_updates: {
+        Args: { p_property_id: string; p_update_ids: string[] };
+        Returns: void;
+      };
+      /** Rewrites sort_order across one feature category. */
+      reorder_property_features: {
+        Args: {
+          p_property_id: string;
+          p_category: string;
+          p_feature_ids: string[];
+        };
+        Returns: void;
       };
     };
     Enums: Record<string, never>;

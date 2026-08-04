@@ -1,16 +1,58 @@
 # Migration verification harness
 
-SQL that asserts what migrations `0001`–`0009` claim: constraints hold, the
+SQL that asserts what migrations `0001`–`0010` claim: constraints hold, the
 helper functions behave, the storage path validator refuses traversal, hero
 selection is unique and atomic, reordering rejects foreign ids, and `audit_log`
 is genuinely append-only.
 
-> **Status: written, not executed.**
+Two check files, run in order:
+
+| File | Covers |
+| --- | --- |
+| `01_checks.sql` | Migrations `0001`–`0009` |
+| `02_checks_phase63.sql` | Migration `0010` |
+
+> **Status: executed, and passing.**
 >
-> This harness has not been run. The environment it was authored in has no
-> Supabase CLI, no `psql`, and its tooling refuses to start containers, so
-> nothing here has been confirmed against a running PostgreSQL. Treat every
-> assertion as unverified until you have run it yourself.
+> Both check files have been run against PostgreSQL 15.18 — every migration
+> applied in order from empty, and every assertion passed. `run-local.sh` is the
+> script that does it.
+>
+> Running it for the first time found two defects that reading the SQL had not:
+>
+> 1. **Migration `0001` did not parse.** `constraint suburb_references_unique
+>    unique (lower(suburb), state)` is invalid — PostgreSQL accepts only bare
+>    column names in a `UNIQUE` table constraint, not expressions. Nothing after
+>    `0001` had ever applied. Now a unique index, which enforces the same rule.
+> 2. **`property_publish_blockers()` failed on any incomplete property.**
+>    `v_blockers || 'some text'` resolves to `anyarray || anyarray`, because a
+>    bare literal is untyped, so PostgreSQL tried to parse the message as an
+>    array literal. The function only worked for properties that were already
+>    ready — the case where its answer does not matter. Corrected forward in
+>    `0010` using `array_append`.
+>
+> Both are the kind of bug that only execution finds. Neither is visible in
+> review, and both had survived two phases of it.
+
+## Running it, in one command
+
+```bash
+sudo sh supabase/verify/run-local.sh
+```
+
+It creates a throwaway cluster in `/var/lib/pgverify`, applies the stubs and
+every migration in order, runs both check files, then stops the server. It never
+touches an existing cluster and listens on no TCP port.
+
+It needs a PostgreSQL 15 server binary, `psql`, and `pgcrypto`. On Amazon Linux
+2023:
+
+```bash
+dnf install -y postgresql15-server postgresql15 postgresql15-contrib
+```
+
+`pgcrypto` is in the `-contrib` package and the migrations require it for
+`gen_random_uuid()`; without it `0001` stops at its first statement.
 
 ## Why this exists separately from `supabase db reset`
 
@@ -48,9 +90,37 @@ Covered:
 - `property_publish_blockers()` reports incomplete properties and missing ones.
 - The three hardened storage policies exist and the path-blind ones are gone.
 
+Added by `02_checks_phase63.sql` for migration `0010`:
+
+- `set_property_hero_image()` refuses an unpublished image, one with no alt
+  text, a floor plan, an image belonging to another property, and one with
+  neither a storage path nor an external URL.
+- `publish_property_if_ready()` publishes only when there are no blockers,
+  returns the blockers instead of raising when there are, writes its audit entry
+  in the same transaction, and refuses a non-administrator.
+- The last super administrator cannot be deleted, deactivated or demoted, by any
+  of those three routes.
+- `reorder_construction_updates()` and `reorder_property_features()` apply the
+  given order and refuse foreign ids, duplicates, cross-category ids and
+  non-administrators.
+- One construction update per stage per property; the stage and feature-category
+  vocabularies are enforced.
+- The SEO columns bound their lengths, require `https` for a canonical URL, and
+  `seo_og_image_id` becomes null when the image it names is deleted.
+- `site_settings` accepts exactly one row, validates both email formats,
+  requires `https` social links, and bounds the default title.
+- `site_settings_public` does not expose `enquiry_recipient_email`, and `anon`
+  can read the view but not the table.
+- An anonymous caller may insert an enquiry but cannot supply `admin_notes`, and
+  an ordinary enquiry still succeeds.
+- No `DELETE` policy exists on `enquiries` for anyone.
+
 **Not** covered:
 
-- Supabase's own RLS enforcement as reached through PostgREST.
+- Supabase's own RLS enforcement as reached through PostgREST. The policies are
+  exercised by `set local role anon` inside a transaction, which evaluates the
+  same predicates — but whether PostgREST reaches them the same way on a real
+  request is not tested here.
 - The Storage HTTP API. Storage policies are exercised only through the SQL
   predicate that backs them, evaluated directly. Whether Supabase applies that
   predicate on an actual upload is not tested here.
@@ -80,6 +150,9 @@ done
 docker exec -i pgverify psql -v ON_ERROR_STOP=1 -U postgres -d verify \
   < supabase/verify/01_checks.sql
 
+docker exec -i pgverify psql -v ON_ERROR_STOP=1 -U postgres -d verify \
+  < supabase/verify/02_checks_phase63.sql
+
 docker rm -f pgverify
 ```
 
@@ -91,6 +164,7 @@ for f in supabase/migrations/*.sql; do
   psql -v ON_ERROR_STOP=1 "$DATABASE_URL" -f "$f"
 done
 psql -v ON_ERROR_STOP=1 "$DATABASE_URL" -f supabase/verify/01_checks.sql
+psql -v ON_ERROR_STOP=1 "$DATABASE_URL" -f supabase/verify/02_checks_phase63.sql
 ```
 
 Use a throwaway database. The harness creates roles and inserts fixtures.

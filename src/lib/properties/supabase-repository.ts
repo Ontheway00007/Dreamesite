@@ -78,7 +78,9 @@ const DETAIL_SELECT = `
   property_public_locations (*),
   property_images (*),
   property_resources (*),
-  property_testimonials (*)
+  property_testimonials (*),
+  construction_updates (*),
+  property_features (*)
 `;
 
 /* --- Row mapping ---------------------------------------------------------- */

@@ -4,7 +4,9 @@ import { Cormorant_Garamond, Inter } from "next/font/google";
 
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
+import { SiteNotice } from "@/components/layout/site-notice";
 import { env } from "@/lib/env";
+import { getPublicSettings } from "@/lib/settings/public-settings";
 import { siteConfig } from "@/lib/site-config";
 import { AppProviders } from "@/providers/app-providers";
 
@@ -24,36 +26,60 @@ const cormorant = Cormorant_Garamond({
   variable: "--font-cormorant",
 });
 
-export const metadata: Metadata = {
-  metadataBase: new URL(env.siteUrl),
-  title: {
-    default: `${siteConfig.name} — ${siteConfig.tagline}`,
-    template: `%s — ${siteConfig.name}`,
-  },
-  description: siteConfig.description,
-  openGraph: {
-    type: "website",
-    locale: "en_AU",
-    url: env.siteUrl,
-    siteName: siteConfig.name,
-    title: `${siteConfig.name} — ${siteConfig.tagline}`,
-    description: siteConfig.description,
-  },
-  alternates: { canonical: "/" },
-  // Preview and local builds are never indexed.
-  robots: env.isIndexable
-    ? { index: true, follow: true }
-    : { index: false, follow: false },
-};
+/**
+ * Site-wide metadata.
+ *
+ * Generated rather than static so the defaults an administrator sets in Settings
+ * are used. The chain matches the per-property one: the stored default first,
+ * then the values in the codebase. Property pages override all of this from
+ * their own `generateMetadata`.
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const settings = await getPublicSettings();
+
+  const title =
+    settings.defaultMetaTitle ??
+    `${settings.companyName} — ${siteConfig.tagline}`;
+  const description = settings.defaultMetaDescription ?? siteConfig.description;
+
+  return {
+    metadataBase: new URL(env.siteUrl),
+    title: {
+      default: title,
+      template: `%s — ${settings.companyName}`,
+    },
+    description,
+    openGraph: {
+      type: "website",
+      locale: "en_AU",
+      url: env.siteUrl,
+      siteName: settings.companyName,
+      title,
+      description,
+      ...(settings.defaultOgImageUrl
+        ? { images: [{ url: settings.defaultOgImageUrl }] }
+        : {}),
+    },
+    alternates: { canonical: "/" },
+    // Preview and local builds are never indexed.
+    robots: env.isIndexable
+      ? { index: true, follow: true }
+      : { index: false, follow: false },
+  };
+}
 
 export const viewport: Viewport = {
   colorScheme: "dark",
   themeColor: "#050506",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  // One read for the whole tree: `getPublicSettings` is request-cached, so the
+  // notice, the header and the footer share it.
+  const settings = await getPublicSettings();
+
   return (
     <html lang="en-AU" className={`${inter.variable} ${cormorant.variable}`}>
       <body className="grain min-h-dvh antialiased">
@@ -64,7 +90,9 @@ export default function RootLayout({
           >
             Skip to content
           </a>
-          <SiteHeader />
+          {/* Above the header, so a closure notice is the first thing read. */}
+          <SiteNotice />
+          <SiteHeader companyName={settings.companyName} />
           <main id="main">{children}</main>
           <SiteFooter />
         </AppProviders>

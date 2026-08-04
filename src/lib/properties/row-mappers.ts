@@ -1,6 +1,9 @@
+import { resolveMediaSource } from "@/lib/properties/media";
 import type {
+  ConstructionUpdatesRow,
   DescriptionBlockRow,
   PropertiesRow,
+  PropertyFeaturesRow,
   PropertyImagesRow,
   PropertyJoinedRow,
   PropertyPublicLocationsRow,
@@ -9,12 +12,18 @@ import type {
 } from "@/types/database";
 import type {
   ArchitecturalVariant,
+  ConstructionStageId,
   MediaSource,
   Property,
+  PropertyConstructionUpdate,
   PropertyDescription,
   PropertyDocument,
+  PropertyFeature,
+  PropertyFeatureCategory,
+  PropertyFeatureGroup,
   PropertyImageCategory,
   PropertyParagraph,
+  PropertySeo,
   PropertyTestimonial,
   PropertyVisual,
   PublicPropertyLocation,
@@ -285,6 +294,123 @@ function formatBytes(bytes: number): string {
   return `PDF · ${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
+/**
+ * Build-diary entries.
+ *
+ * The stage vocabulary is constrained by the database (migration 0010), so a
+ * row's stage is always one of the known ids. The cast records that rather than
+ * re-validating what the database already guarantees.
+ */
+function mapConstructionUpdate(
+  row: ConstructionUpdatesRow,
+): PropertyConstructionUpdate {
+  return {
+    id: row.id,
+    stage: row.stage as ConstructionStageId,
+    title: row.title,
+    description: row.description ?? undefined,
+    status: row.status,
+    progressValue: isFiniteNumber(row.progress_value)
+      ? row.progress_value
+      : undefined,
+    occurredAt: row.occurred_at ?? undefined,
+  };
+}
+
+/**
+ * Groups features by category, in the order the public page presents them.
+ *
+ * A category with no published features produces no group, so the page never
+ * renders an empty heading. The order is fixed rather than data-driven: the
+ * sections read in a deliberate sequence, and letting the data reorder them
+ * would make two properties present differently for no reason.
+ */
+const FEATURE_GROUP_ORDER: ReadonlyArray<{
+  category: PropertyFeatureCategory;
+  heading: string;
+}> = [
+  { category: "highlight", heading: "Highlights" },
+  { category: "inclusion", heading: "Inclusions" },
+  { category: "specification", heading: "Specifications" },
+  { category: "material", heading: "Materials and finishes" },
+  { category: "energy", heading: "Energy and comfort" },
+  { category: "design", heading: "Design" },
+];
+
+function mapFeatureGroups(
+  rows: readonly PropertyFeaturesRow[],
+): PropertyFeatureGroup[] {
+  const groups: PropertyFeatureGroup[] = [];
+
+  for (const { category, heading } of FEATURE_GROUP_ORDER) {
+    const features = rows
+      .filter((row) => row.category === category)
+      .map(
+        (row): PropertyFeature => ({
+          id: row.id,
+          category,
+          label: row.label,
+          value: row.value ?? undefined,
+        }),
+      );
+
+    if (features.length > 0) {
+      groups.push({ category, heading, features });
+    }
+  }
+
+  return groups;
+}
+
+/**
+ * Metadata overrides.
+ *
+ * Returns undefined when nothing is set, so the resolver can treat "no
+ * overrides" as a single check rather than five.
+ *
+ * The Open Graph image is resolved from the joined image rows and is only
+ * honoured when that image is published — a draft would render as a broken
+ * preview wherever the link were shared, and social scrapers arrive with no
+ * session, so there is no circumstance in which a draft would work.
+ */
+function mapSeo(
+  row: PropertiesRow,
+  images: readonly PropertyImagesRow[],
+): PropertySeo | undefined {
+  const hasOverride =
+    row.seo_meta_title !== null ||
+    row.seo_meta_description !== null ||
+    row.seo_og_image_id !== null ||
+    row.seo_canonical_url !== null ||
+    row.seo_noindex;
+
+  if (!hasOverride) {
+    return undefined;
+  }
+
+  let ogImageUrl: string | undefined;
+
+  if (row.seo_og_image_id) {
+    const chosen = images.find((image) => image.id === row.seo_og_image_id);
+
+    // `images` has already been filtered to published rows by the caller, so a
+    // draft or deleted choice simply does not match and the override falls
+    // back to the hero.
+    if (chosen) {
+      const source = mapSource(chosen.storage_path, chosen.external_url);
+      ogImageUrl = source ? (resolveMediaSource(source) ?? undefined) : undefined;
+    }
+  }
+
+  return {
+    metaTitle: row.seo_meta_title ?? undefined,
+    metaDescription: row.seo_meta_description ?? undefined,
+    ogImageUrl,
+    canonicalUrl: row.seo_canonical_url ?? undefined,
+    noindex: row.seo_noindex,
+  };
+}
+
 function mapTestimonial(
   testimonial: PropertyTestimonialsRow,
 ): PropertyTestimonial {
@@ -326,6 +452,19 @@ export function mapPropertyRow(row: PropertyJoinedRow): Property {
 
   const resourceRows = (row.property_resources ?? [])
     .filter((resource) => resource.is_published)
+    .slice()
+    .sort(bySortOrder);
+
+  // Same discipline for the two Phase 6.3 children: drafts are filtered here
+  // as well as by RLS, so "draft content never becomes public content" is a
+  // property of the mapping rather than only of who queried.
+  const constructionRows = (row.construction_updates ?? [])
+    .filter((update) => update.is_published)
+    .slice()
+    .sort(bySortOrder);
+
+  const featureRows = (row.property_features ?? [])
+    .filter((feature) => feature.is_published)
     .slice()
     .sort(bySortOrder);
 
@@ -385,6 +524,15 @@ export function mapPropertyRow(row: PropertyJoinedRow): Property {
     documents: documents.length > 0 ? documents : undefined,
     testimonials:
       testimonialRows.length > 0 ? testimonialRows.map(mapTestimonial) : undefined,
+    constructionUpdates:
+      constructionRows.length > 0
+        ? constructionRows.map(mapConstructionUpdate)
+        : undefined,
+    featureGroups: (() => {
+      const groups = mapFeatureGroups(featureRows);
+      return groups.length > 0 ? groups : undefined;
+    })(),
+    seo: mapSeo(row, visualRows),
     displayHome: row.display_is_home
       ? {
           isDisplayHome: true,

@@ -24,7 +24,13 @@ import { LocationEditor } from "@/components/admin/location-editor";
 import { AdminAlert } from "@/components/admin/admin-alert";
 import { Field, Toggle } from "@/components/admin/form-controls";
 import { MediaManager } from "@/components/admin/media/media-manager";
+import { ConstructionManager } from "@/components/admin/content/construction-manager";
+import { SeoEditor } from "@/components/admin/seo/seo-editor";
+import { FeatureManager } from "@/components/admin/content/feature-manager";
 import type { AdminPropertyMedia } from "@/lib/admin/media-repository";
+import type { AdminPropertyContent } from "@/lib/admin/content-repository";
+import { derivePropertyMetadata } from "@/lib/seo/metadata";
+import type { Property } from "@/types";
 
 interface Props {
   mode: "create" | "edit";
@@ -36,9 +42,17 @@ interface Props {
   publishBlockers?: readonly string[];
   /** Every image and resource on this property, drafts included. */
   media?: AdminPropertyMedia;
+  /** Construction updates and features, drafts included. */
+  content?: AdminPropertyContent;
 }
 
-type TabId = "details" | "location" | "media";
+type TabId =
+  | "details"
+  | "location"
+  | "media"
+  | "construction"
+  | "features"
+  | "seo";
 
 /** Maps field errors to a lookup the inputs can read. */
 function toFieldMap(errors: readonly FieldError[] | undefined) {
@@ -61,6 +75,7 @@ export function PropertyEditor({
   locationSettings,
   publishBlockers = [],
   media,
+  content,
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -162,7 +177,6 @@ export function PropertyEditor({
       priceDisplay: priceDisplay || undefined,
       completionLabel: completionLabel || undefined,
       isFeatured,
-      isPublished,
       displayPriority,
       displayIsHome,
       displayOpeningNote: displayOpeningNote || undefined,
@@ -258,6 +272,9 @@ export function PropertyEditor({
       badge: hasLocation ? undefined : "Not set",
     },
     { id: "media", label: "Media" },
+    { id: "construction", label: "Build timeline" },
+    { id: "features", label: "Features" },
+    { id: "seo", label: "Search" },
   ];
 
   return (
@@ -635,12 +652,10 @@ export function PropertyEditor({
       {/* Media */}
       {activeTab === "media" &&
         (mode === "create" || !propertyId || !media ? (
-          <AdminAlert tone="info" title="Save the property first">
-            <p className="mt-1">
-              Media is stored against a saved property. Create it on the Details
-              tab, then add photography here.
-            </p>
-          </AdminAlert>
+          <SaveFirstNotice>
+            Media is stored against a saved property. Create it on the Details
+            tab, then add photography here.
+          </SaveFirstNotice>
         ) : (
           <MediaManager
             propertyId={propertyId}
@@ -649,6 +664,86 @@ export function PropertyEditor({
             failed={media.failed}
           />
         ))}
+
+      {/* Build timeline */}
+      {activeTab === "construction" &&
+        (mode === "create" || !propertyId || !content ? (
+          <SaveFirstNotice>
+            Build updates belong to a saved property. Create it on the Details
+            tab, then record the timeline here.
+          </SaveFirstNotice>
+        ) : (
+          <div className="bg-surface border-border rounded-xl border p-6">
+            <ConstructionManager
+              propertyId={propertyId}
+              updates={content.constructionUpdates}
+              failed={content.failed}
+            />
+          </div>
+        ))}
+
+      {/* Search */}
+      {activeTab === "seo" &&
+        (mode === "create" || !propertyId || !initialData ? (
+          <SaveFirstNotice>
+            Search settings are stored on the property record. Create it on the
+            Details tab first.
+          </SaveFirstNotice>
+        ) : (
+          <div className="bg-surface border-border rounded-xl border p-6">
+            <SeoEditor
+              propertyId={propertyId}
+              seo={{
+                metaTitle: initialData.seo_meta_title,
+                metaDescription: initialData.seo_meta_description,
+                ogImageId: initialData.seo_og_image_id,
+                canonicalUrl: initialData.seo_canonical_url,
+                noindex: initialData.seo_noindex,
+              }}
+              derived={derivePropertyMetadata({
+                name: initialData.name,
+                slug: initialData.slug,
+                suburb: initialData.suburb,
+                state: initialData.state,
+                summary: initialData.summary,
+                status: initialData.status as Property["status"],
+              })}
+              images={media?.images ?? []}
+            />
+          </div>
+        ))}
+
+      {/* Features */}
+      {activeTab === "features" &&
+        (mode === "create" || !propertyId || !content ? (
+          <SaveFirstNotice>
+            Features belong to a saved property. Create it on the Details tab,
+            then add the specification here.
+          </SaveFirstNotice>
+        ) : (
+          <div className="bg-surface border-border rounded-xl border p-6">
+            <FeatureManager
+              propertyId={propertyId}
+              features={content.features}
+              failed={content.failed}
+            />
+          </div>
+        ))}
     </div>
+  );
+}
+
+/**
+ * Shown on the tabs that write to child tables.
+ *
+ * Media, construction updates and features are all keyed by property id, so
+ * none of them can be edited before the property row exists. Saying so is
+ * better than rendering an editor whose every action would fail.
+ */
+function SaveFirstNotice({ children }: { children: React.ReactNode }) {
+  return (
+    <AdminAlert tone="info" title="Save the property first">
+      <p className="mt-1">{children}</p>
+    </AdminAlert>
   );
 }
