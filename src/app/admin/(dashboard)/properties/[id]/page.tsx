@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 
-import { getAdminPropertyById } from "@/lib/admin/repository";
+import { getAdminPropertyById, getPublishBlockers } from "@/lib/admin/repository";
 import { PropertyEditor } from "@/components/admin/property-editor";
 
-export const metadata = { title: "Edit Property" };
+export const metadata = { title: "Edit property" };
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -11,23 +12,55 @@ interface Props {
 
 export default async function EditPropertyPage({ params }: Props) {
   const { id } = await params;
-  const data = await getAdminPropertyById(id);
 
-  if (!data) {
+  // Both reads are independent, so they go out together.
+  const [detail, publishBlockers] = await Promise.all([
+    getAdminPropertyById(id),
+    getPublishBlockers(id),
+  ]);
+
+  if (!detail) {
     notFound();
   }
 
   return (
     <div className="space-y-6">
-      <h1 className="text-heading-2 font-display text-foreground">
-        Edit Property
-      </h1>
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <div>
+          <Link
+            href="/admin/properties"
+            className="text-foreground-subtle hover:text-foreground-muted text-sm transition-colors"
+          >
+            ← All properties
+          </Link>
+          <h1 className="text-heading-2 font-display text-foreground mt-1">
+            {detail.property.name}
+          </h1>
+        </div>
+
+        {detail.property.is_published ? (
+          <Link
+            href={`/properties/${detail.property.slug}`}
+            target="_blank"
+            rel="noreferrer"
+            className="text-accent hover:text-accent-strong text-sm font-medium transition-colors"
+          >
+            View on site ↗
+          </Link>
+        ) : (
+          <span className="text-foreground-subtle rounded-full bg-zinc-500/20 px-2.5 py-1 text-xs font-medium">
+            Draft
+          </span>
+        )}
+      </div>
+
       <PropertyEditor
         mode="edit"
         propertyId={id}
-        initialData={data.property}
-        privateLocation={data.privateLocation}
-        locationSettings={data.locationSettings}
+        initialData={detail.property}
+        privateLocation={detail.privateLocation}
+        locationSettings={detail.locationSettings}
+        publishBlockers={publishBlockers}
       />
     </div>
   );

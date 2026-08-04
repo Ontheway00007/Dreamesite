@@ -163,7 +163,7 @@ export function PropertyTable({
               </th>
               <th className="px-4 py-3 text-left">
                 <span className="text-foreground-subtle text-xs font-medium uppercase tracking-wider">
-                  Visibility
+                  Location
                 </span>
               </th>
               <th className="px-4 py-3 text-center">
@@ -221,11 +221,21 @@ export function PropertyTable({
                   {property.carSpaces}
                 </td>
                 <td className="px-4 py-3">
-                  <span className="text-foreground-subtle text-xs">
-                    {property.locationVisibility
-                      ? VISIBILITY_LABELS[property.locationVisibility] ?? property.locationVisibility
-                      : "\u2014"}
-                  </span>
+                  {property.hasLocation ? (
+                    <span className="text-foreground-subtle text-xs">
+                      {VISIBILITY_LABELS[property.locationVisibility ?? ""] ??
+                        property.locationVisibility}
+                    </span>
+                  ) : (
+                    // No location means the property cannot be published, so
+                    // it is flagged here rather than only inside the editor.
+                    <span
+                      className="rounded-full bg-amber-500/20 px-2 py-0.5 text-xs font-medium text-amber-400"
+                      title="Set a location before this property can be published."
+                    >
+                      Not set
+                    </span>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-center">
                   <StatusDot active={property.isPublished} />

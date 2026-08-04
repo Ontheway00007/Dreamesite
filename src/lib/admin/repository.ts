@@ -1,13 +1,26 @@
 import "server-only";
 
+import { logAdminError } from "@/lib/admin/errors";
+import { callRpc } from "@/lib/admin/rpc";
+import {
+  buildSearchFilter,
+  safeSortColumn,
+  safeSortDirection,
+} from "@/lib/admin/search";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { PropertiesRow, PropertyLocationSettingsRow, PropertyPrivateLocationsRow } from "@/types/database";
+import type {
+  PropertiesRow,
+  PropertyLocationSettingsRow,
+  PropertyPrivateLocationsRow,
+} from "@/types/database";
 
 /**
- * Admin property repository.
+ * Admin property reads.
  *
- * Unlike the public repository, this reads ALL properties (including unpublished/draft).
- * Every function requires an authenticated admin session — RLS enforces this.
+ * Distinct from the public repository in `lib/properties/` in two ways: it
+ * returns drafts as well as published rows, and it can reach the private
+ * location tables. Both are governed by RLS — an authenticated session with
+ * no `admin_users` row sees nothing here.
  */
 
 export interface AdminPropertyListItem {
@@ -23,12 +36,16 @@ export interface AdminPropertyListItem {
   readonly isFeatured: boolean;
   readonly displayPriority: number;
   readonly locationVisibility: string | null;
+  /** False when the property has no location configured — blocks publishing. */
+  readonly hasLocation: boolean;
   readonly updatedAt: string;
 }
 
 export interface AdminPropertyListResult {
   readonly properties: AdminPropertyListItem[];
   readonly total: number;
+  /** True when the read failed, so the UI can say so rather than "no results". */
+  readonly failed: boolean;
 }
 
 export interface PropertyListParams {
@@ -43,36 +60,53 @@ export interface PropertyListParams {
 }
 
 const DEFAULT_PER_PAGE = 20;
+const MAX_PER_PAGE = 100;
 
-/**
- * Lists all properties for the admin table with pagination, filtering,
- * sorting, and search.
- */
+/** Columns the table may sort by. Not a value — never caller-supplied. */
+const SORTABLE_COLUMNS = [
+  "name",
+  "status",
+  "suburb",
+  "bedrooms",
+  "bathrooms",
+  "car_spaces",
+  "is_published",
+  "is_featured",
+  "display_priority",
+  "updated_at",
+] as const;
+
+/** Columns the search box matches against. */
+const SEARCHABLE_COLUMNS = ["name", "slug", "suburb"] as const;
+
+const LIST_SELECT = `
+  id, slug, name, status, suburb, bedrooms, bathrooms, car_spaces,
+  is_published, is_featured, display_priority, updated_at,
+  settings:property_location_settings(location_visibility)
+`;
+
 export async function getAdminProperties(
   params: PropertyListParams = {},
 ): Promise<AdminPropertyListResult> {
   const supabase = await createAdminClient();
 
-  const page = Math.max(1, params.page ?? 1);
-  const perPage = Math.min(100, Math.max(1, params.perPage ?? DEFAULT_PER_PAGE));
+  const page = Math.max(1, Math.floor(params.page ?? 1));
+  const perPage = Math.min(
+    MAX_PER_PAGE,
+    Math.max(1, Math.floor(params.perPage ?? DEFAULT_PER_PAGE)),
+  );
   const offset = (page - 1) * perPage;
-  const sortBy = params.sortBy ?? "display_priority";
-  const sortDir = params.sortDir ?? "asc";
 
-  // Build the query
   let query = supabase
     .from("properties")
-    .select(
-      `id, slug, name, status, suburb, bedrooms, bathrooms, car_spaces,
-       is_published, is_featured, display_priority, updated_at,
-       settings:property_location_settings(location_visibility)`,
-      { count: "exact" },
-    );
+    .select(LIST_SELECT, { count: "exact" });
 
-  // Filters
-  if (params.search) {
-    const term = `%${params.search}%`;
-    query = query.or(`name.ilike.${term},slug.ilike.${term},suburb.ilike.${term}`);
+  // Search terms are escaped and quoted before reaching PostgREST — see
+  // lib/admin/search.ts for why raw interpolation here is unsafe.
+  const searchFilter = buildSearchFilter(params.search, SEARCHABLE_COLUMNS);
+
+  if (searchFilter) {
+    query = query.or(searchFilter);
   }
 
   if (params.status && params.status !== "all") {
@@ -89,27 +123,29 @@ export async function getAdminProperties(
     query = query.eq("is_published", false);
   }
 
-  // Sorting
-  const validSortColumns = [
-    "name", "status", "suburb", "bedrooms", "bathrooms", "car_spaces",
-    "is_published", "is_featured", "display_priority", "updated_at",
-  ];
-  const column = validSortColumns.includes(sortBy) ? sortBy : "display_priority";
-  query = query.order(column, { ascending: sortDir === "asc" });
+  const column = safeSortColumn(
+    params.sortBy,
+    SORTABLE_COLUMNS,
+    "display_priority",
+  );
+  const ascending = safeSortDirection(params.sortDir) === "asc";
 
-  // Secondary sort for stability
+  query = query.order(column, { ascending });
+
+  // Ties on the primary sort would otherwise come back in arbitrary order,
+  // which makes pagination unstable: a row can appear on two pages or none.
   if (column !== "name") {
     query = query.order("name", { ascending: true });
   }
+  if (column !== "id") {
+    query = query.order("id", { ascending: true });
+  }
 
-  // Pagination
-  query = query.range(offset, offset + perPage - 1);
-
-  const { data, error, count } = await query;
+  const { data, error, count } = await query.range(offset, offset + perPage - 1);
 
   if (error) {
-    console.error("[admin] Failed to load properties:", error);
-    return { properties: [], total: 0 };
+    logAdminError("Listing properties for the admin table", error);
+    return { properties: [], total: 0, failed: true };
   }
 
   const rows = (data ?? []) as unknown as Array<
@@ -118,118 +154,149 @@ export async function getAdminProperties(
     }
   >;
 
-  const properties: AdminPropertyListItem[] = rows.map((row) => ({
-    id: row.id,
-    slug: row.slug,
-    name: row.name,
-    status: row.status,
-    suburb: row.suburb,
-    bedrooms: row.bedrooms,
-    bathrooms: row.bathrooms,
-    carSpaces: row.car_spaces,
-    isPublished: row.is_published,
-    isFeatured: row.is_featured,
-    displayPriority: row.display_priority,
-    locationVisibility: row.settings?.[0]?.location_visibility ?? null,
-    updatedAt: row.updated_at,
-  }));
+  const properties = rows.map((row): AdminPropertyListItem => {
+    const visibility = row.settings?.[0]?.location_visibility ?? null;
 
-  return { properties, total: count ?? 0 };
+    return {
+      id: row.id,
+      slug: row.slug,
+      name: row.name,
+      status: row.status,
+      suburb: row.suburb,
+      bedrooms: row.bedrooms,
+      bathrooms: row.bathrooms,
+      carSpaces: row.car_spaces,
+      isPublished: row.is_published,
+      isFeatured: row.is_featured,
+      displayPriority: row.display_priority,
+      locationVisibility: visibility,
+      hasLocation: visibility !== null,
+      updatedAt: row.updated_at,
+    };
+  });
+
+  return { properties, total: count ?? 0, failed: false };
+}
+
+export interface AdminPropertyDetail {
+  readonly property: PropertiesRow;
+  readonly privateLocation: PropertyPrivateLocationsRow | null;
+  readonly locationSettings: PropertyLocationSettingsRow | null;
 }
 
 /**
- * Get a single property with all its relations for the editor.
+ * Loads one property and its location for the editor.
+ *
+ * Three reads, issued together rather than in sequence, so the page waits
+ * one round trip instead of three.
+ *
+ * This deliberately does **not** load images, resources, features,
+ * construction updates or testimonials. The previous version fetched all
+ * five — seven queries per page load — and no editor consumed them, because
+ * those editors do not exist yet. Each will add its own read when it is
+ * built, rather than every page paying for all of them now.
+ *
+ * `maybeSingle` on the location tables is correct: a property legitimately
+ * has no location until an administrator sets one.
  */
-export async function getAdminPropertyById(id: string) {
-  const supabase = await createAdminClient();
-
-  const { data, error } = await supabase
-    .from("properties")
-    .select("*")
-    .eq("id", id)
-    .single();
-
-  if (error || !data) {
+export async function getAdminPropertyById(
+  id: string,
+): Promise<AdminPropertyDetail | null> {
+  if (!id) {
     return null;
   }
 
-  // Load private location
-  const { data: privateLocation } = await supabase
-    .from("property_private_locations")
-    .select("*")
-    .eq("property_id", id)
-    .single();
+  const supabase = await createAdminClient();
 
-  // Load location settings
-  const { data: locationSettings } = await supabase
-    .from("property_location_settings")
-    .select("*")
-    .eq("property_id", id)
-    .single();
+  const [propertyResult, privateResult, settingsResult] = await Promise.all([
+    supabase.from("properties").select("*").eq("id", id).maybeSingle(),
+    supabase
+      .from("property_private_locations")
+      .select("*")
+      .eq("property_id", id)
+      .maybeSingle(),
+    supabase
+      .from("property_location_settings")
+      .select("*")
+      .eq("property_id", id)
+      .maybeSingle(),
+  ]);
 
-  // Load images
-  const { data: images } = await supabase
-    .from("property_images")
-    .select("*")
-    .eq("property_id", id)
-    .order("sort_order", { ascending: true });
+  if (propertyResult.error) {
+    logAdminError(`Loading property ${id}`, propertyResult.error);
+    return null;
+  }
 
-  // Load resources
-  const { data: resources } = await supabase
-    .from("property_resources")
-    .select("*")
-    .eq("property_id", id)
-    .order("sort_order", { ascending: true });
+  if (!propertyResult.data) {
+    return null;
+  }
 
-  // Load features
-  const { data: features } = await supabase
-    .from("property_features")
-    .select("*")
-    .eq("property_id", id)
-    .order("sort_order", { ascending: true });
+  // A failure reading the location is logged but not fatal: the editor can
+  // still open on the Details tab, and the Location tab will show as unset.
+  if (privateResult.error) {
+    logAdminError(`Loading private location for ${id}`, privateResult.error);
+  }
 
-  // Load construction updates
-  const { data: constructionUpdates } = await supabase
-    .from("construction_updates")
-    .select("*")
-    .eq("property_id", id)
-    .order("sort_order", { ascending: true });
-
-  // Load testimonials
-  const { data: testimonials } = await supabase
-    .from("property_testimonials")
-    .select("*")
-    .eq("property_id", id)
-    .order("sort_order", { ascending: true });
+  if (settingsResult.error) {
+    logAdminError(`Loading location settings for ${id}`, settingsResult.error);
+  }
 
   return {
-    property: data as unknown as PropertiesRow,
-    privateLocation: (privateLocation as unknown as PropertyPrivateLocationsRow) ?? null,
-    locationSettings: (locationSettings as unknown as PropertyLocationSettingsRow) ?? null,
-    images: (images ?? []) as unknown as Array<Record<string, unknown>>,
-    resources: (resources ?? []) as unknown as Array<Record<string, unknown>>,
-    features: (features ?? []) as unknown as Array<Record<string, unknown>>,
-    constructionUpdates: (constructionUpdates ?? []) as unknown as Array<Record<string, unknown>>,
-    testimonials: (testimonials ?? []) as unknown as Array<Record<string, unknown>>,
+    property: propertyResult.data as unknown as PropertiesRow,
+    privateLocation:
+      (privateResult.data as unknown as PropertyPrivateLocationsRow) ?? null,
+    locationSettings:
+      (settingsResult.data as unknown as PropertyLocationSettingsRow) ?? null,
   };
 }
 
 /**
- * Get distinct suburbs from all properties (for filter dropdown).
+ * Distinct suburbs across every property, for the filter dropdown.
+ *
+ * Selects one column and de-duplicates in memory. At this scale that is
+ * cheaper and clearer than a view or an RPC; if the catalogue ever reaches
+ * thousands of rows, a `select distinct` view becomes worthwhile.
  */
 export async function getAdminSuburbs(): Promise<string[]> {
   const supabase = await createAdminClient();
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("properties")
     .select("suburb")
     .order("suburb", { ascending: true });
 
-  if (!data) return [];
+  if (error) {
+    logAdminError("Loading suburb filter options", error);
+    return [];
+  }
 
-  const suburbs = new Set(
-    (data as unknown as Array<{ suburb: string }>).map((r) => r.suburb),
-  );
+  const rows = (data ?? []) as unknown as Array<{ suburb: string }>;
 
-  return [...suburbs];
+  return [...new Set(rows.map((row) => row.suburb).filter(Boolean))];
+}
+
+/**
+ * Reasons a property cannot be published, for display in the editor.
+ *
+ * Shares the single `property_publish_blockers` definition with the publish
+ * action, so what the editor warns about and what the action refuses can
+ * never disagree.
+ */
+export async function getPublishBlockers(id: string): Promise<string[]> {
+  if (!id) {
+    return [];
+  }
+
+  const supabase = await createAdminClient();
+
+  const { data, error } = await callRpc(supabase, "property_publish_blockers", {
+    p_property_id: id,
+  });
+
+  if (error) {
+    logAdminError(`Reading publish blockers for ${id}`, error);
+    return [];
+  }
+
+  return data ?? [];
 }

@@ -146,17 +146,169 @@ The admin system lives at `/admin` and uses Supabase Auth with email/password.
 | Role          | Permissions                                      |
 | ------------- | ------------------------------------------------ |
 | `admin`       | Full CRUD on properties, media, enquiries        |
-| `super_admin` | Above + manage other administrators              |
+| `super_admin` | Above + manage the administrator roster          |
+
+An administrator cannot demote or delete themselves — a trigger on
+`admin_users` refuses it, so the installation cannot be locked out.
+
+### Authorization helpers, and why they are SECURITY DEFINER
+
+Two functions decide everything:
+
+| Function                 | Answers                                    |
+| ------------------------ | ------------------------------------------ |
+| `public.is_admin()`      | Is the caller an active administrator?     |
+| `public.is_super_admin()`| May the caller change the admin roster?    |
+
+Both are `SECURITY DEFINER`, `STABLE`, and pinned with `SET search_path = ''`.
+Each property matters:
+
+- **SECURITY DEFINER** lets them read `admin_users` with the owner's
+  privileges, bypassing RLS on that table. Without it, a policy *on*
+  `admin_users` that checks `admin_users` recurses — PostgreSQL aborts the
+  statement with `42P17`, and every admin read fails. Phase 6 shipped exactly
+  that bug; migration `0008` fixes it.
+- **`search_path = ''`** stops a caller putting their own schema ahead of
+  `public` and having the function resolve `admin_users` to a table they
+  control. Every reference inside is fully schema-qualified.
+- **STABLE** means one evaluation per statement rather than per row — these
+  run inside row-level policies.
+
+`EXECUTE` is revoked from `PUBLIC` and granted only to `authenticated`.
+`CREATE FUNCTION` grants `EXECUTE` to `PUBLIC` by default, and `PUBLIC` is
+inherited by every role, so revoking from `anon` alone — as Phase 6 did — has
+no effect.
+
+### RLS model
+
+| Audience                        | Access                                          |
+| ------------------------------- | ----------------------------------------------- |
+| `anon`                          | Published catalogue rows only; insert enquiries |
+| `authenticated`, not an admin   | Identical to `anon`                             |
+| `authenticated`, an admin       | Full CRUD on every table, plus the private ones |
+| `super_admin`                   | Above, plus the `admin_users` roster            |
+
+Being signed in grants nothing on its own. Every admin policy calls
+`is_admin()`, so a valid session without an `admin_users` row sees exactly
+what an anonymous visitor sees.
+
+### Transactional integrity
+
+Saving a location writes three tables — the stored position, the privacy
+settings, and the generated public projection. As separate statements, a
+failure on the third leaves the first two committed, and the published marker
+then disagrees with the settings that were supposed to produce it. A property
+set to `hidden` could keep serving a coordinate from the previous save.
+
+`public.save_property_location` (migration `0008`) performs all three writes
+plus the audit entry in one transaction. Everything commits together or
+nothing does.
+
+The privacy algorithm stays in TypeScript, in `lib/properties/privacy.ts`.
+The Server Action derives the projection *before* the call and passes the
+result in; the database function stores what it is given and never recomputes
+it. A second implementation in SQL would be a second definition of what may
+be published, and the two would eventually disagree.
+
+### Validation
+
+Validation lives in `lib/admin/validation/`, not inside the Server Actions,
+so the same rules are available to future API routes, importers and
+client-side hints — and so each rule is testable without a database or a
+session.
+
+| Module        | Covers                                              |
+| ------------- | --------------------------------------------------- |
+| `property.ts` | Names, slugs, measurements, description blocks      |
+| `location.ts` | Coordinates, radius, manual markers, postcodes      |
+| `result.ts`   | The shared `ValidationResult` / `FieldError` shapes |
+
+Errors are returned per field, so a form highlights the input at fault
+instead of showing one message above everything. The rules mirror the
+database CHECK constraints deliberately: the database stays the authority,
+and this layer exists to produce a message an administrator can act on rather
+than a constraint violation they cannot.
+
+There is a second, separate privacy review in
+`lib/properties/privacy-validation.ts`. It reports configurations that are
+legal but self-defeating — publishing a street address while hiding the
+marker — as warnings, and never blocks a save. The distinction is deliberate:
+validation can refuse, review cannot.
+
+### Publishing rules
+
+Publishing is the moment a record becomes public, so it is gated. A property
+cannot be published until it has:
+
+- a name, summary and slug
+- a suburb and state
+- location privacy settings
+- a generated public projection
+
+`public.property_publish_blockers(uuid)` returns the outstanding reasons as
+readable sentences. The editor shows them before the administrator tries,
+the Publish button is disabled while any remain, and the action re-checks
+server-side. If readiness cannot be established the action fails closed.
+
+Publishing is only ever done through the Publish button — the update path
+also re-checks, so a record cannot be made public by a checkbox on a form.
+
+### Duplication
+
+Duplicating copies the **core record only**: names, measurements, status,
+copy. It deliberately does not copy:
+
+- **Location** — two properties sharing coordinates is wrong by
+  construction, and copying privacy settings would apply one owner's decision
+  to a different home.
+- **Media** — storage objects would either be shared by reference, so
+  deleting one property's photograph removes it from the other, or duplicated
+  in the bucket at a cost nobody asked for.
+
+A duplicate is always a draft, never featured, and never a display home. The
+button says what is and is not copied.
+
+### Errors
+
+No database message reaches the browser. Every write path passes failures
+through `lib/admin/errors.ts`, which maps PostgreSQL error codes to
+administrator-facing sentences and logs the full detail — code, message,
+details, hint — server-side only.
+
+Constraint names describe the schema, and PL/pgSQL context lines can carry a
+function body; neither tells an administrator what to do differently. Only
+messages this codebase raises itself pass through verbatim, matched by prefix
+so a database error quoting our wording cannot smuggle its own detail out
+with it.
+
+### Audit log
+
+`audit_log` is append-only. `UPDATE`, `DELETE` and `TRUNCATE` are revoked
+from `authenticated` and `anon`, and triggers refuse all three regardless of
+grants — an audit trail the audited party can edit is not an audit trail.
+
+Entries written by `save_property_location` are inside its transaction, so
+the trail cannot record a save that was rolled back.
+
+Purging on a retention schedule remains possible for the service role. That
+is deliberate: it is an operational act, not something an admin session
+should be able to perform.
 
 ### Security guarantees
 
 - Private coordinates and privacy settings are never exposed to the browser
-  in public routes (enforced by RLS + the privacy pipeline).
-- Admin routes are gated by `requireAdmin()` in every Server Component and
-  Server Action — there is no client-only auth check.
-- The service-role key is used ONLY for the projection regeneration service
-  (`generate-public-locations.ts`). All admin CRUD uses the authenticated
-  client with RLS.
+  on public routes — enforced by RLS *and* the privacy pipeline.
+- Every admin route is gated by `requireAdmin()` in the Server Component or
+  Action. There is no client-only check.
+- Authorization is read from `admin_users` on every request. JWT claims and
+  `user_metadata` are never trusted.
+- The service-role key is used by exactly one module,
+  `generate-public-locations.ts`. All admin CRUD uses the authenticated client
+  under RLS.
+- Search terms are escaped and quoted before reaching PostgREST. Interpolating
+  them into an `or=` expression would let a comma or parenthesis add filters
+  the caller never wrote; `lib/admin/search.ts` prevents it, and sort columns
+  come from an allow-list because identifiers cannot be parameterised.
 
 ## Caching
 

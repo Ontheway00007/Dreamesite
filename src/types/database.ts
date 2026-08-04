@@ -310,6 +310,49 @@ export interface Database {
         Args: Record<string, never>;
         Returns: boolean;
       };
+      is_super_admin: {
+        Args: Record<string, never>;
+        Returns: boolean;
+      };
+      /**
+       * Atomic location save. Writes the private position, the privacy
+       * settings, the derived public projection and the audit entry in one
+       * transaction. See migration 0008.
+       */
+      save_property_location: {
+        Args: {
+          p_property_id: string;
+          p_private_latitude: number;
+          p_private_longitude: number;
+          p_house_number: string | null;
+          p_street: string | null;
+          p_postcode: string | null;
+          p_location_visibility: string;
+          p_privacy_radius_meters: number | null;
+          p_public_marker_mode: string;
+          p_manual_public_latitude: number | null;
+          p_manual_public_longitude: number | null;
+          p_suburb_reference: string | null;
+          p_show_house_number: boolean;
+          p_show_street: boolean;
+          p_show_suburb: boolean;
+          p_show_postcode: boolean;
+          p_allow_directions: boolean | null;
+          p_public_latitude: number | null;
+          p_public_longitude: number | null;
+          p_public_address: string | null;
+          p_marker_mode: string;
+          p_location_label: string | null;
+          p_accuracy_note: string | null;
+          p_public_allow_directions: boolean;
+        };
+        Returns: void;
+      };
+      /** Reasons a property cannot be published yet. Empty means ready. */
+      property_publish_blockers: {
+        Args: { p_property_id: string };
+        Returns: string[];
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

@@ -4,160 +4,167 @@ import { revalidatePath } from "next/cache";
 
 import { requireAdmin } from "@/lib/admin/auth";
 import { logAuditEvent } from "@/lib/admin/audit";
+import { handleAdminError } from "@/lib/admin/errors";
+import { callRpc } from "@/lib/admin/rpc";
+import {
+  validateProperty,
+  type PropertyInput,
+} from "@/lib/admin/validation/property";
+import { summarise, type FieldError } from "@/lib/admin/validation/result";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
- * Server Actions for property CRUD.
+ * Property CRUD.
  *
- * Every action:
- * 1. Verifies admin authorization (via requireAdmin → RLS)
- * 2. Validates input server-side
- * 3. Performs the database operation
- * 4. Logs the action to audit_log
- * 5. Revalidates relevant paths
+ * Each action follows the same four steps:
+ *
+ *   1. `requireAdmin()` — authorization, verified against `admin_users`
+ *      server-side. RLS enforces it again at the database.
+ *   2. Validate through `lib/admin/validation/property.ts`. The rules live
+ *      there so API routes and importers can reuse them.
+ *   3. Perform the write, translating any failure through
+ *      `handleAdminError` so the browser never sees a database message.
+ *   4. Record the audit entry and revalidate affected paths.
+ *
+ * The actions themselves stay thin: no validation logic, no error strings
+ * beyond the operation-specific fallback.
  */
 
 export interface PropertyActionResult {
   readonly success: boolean;
   readonly error?: string;
+  readonly fieldErrors?: readonly FieldError[];
   readonly id?: string;
+  /** Set when publishing was refused because the record is incomplete. */
+  readonly blockers?: readonly string[];
 }
 
-export interface PropertyFormData {
-  readonly name: string;
-  readonly slug: string;
-  readonly summary: string;
-  readonly descriptionBlocks?: Array<{ id: string; text: string }>;
-  readonly descriptionSource?: "written" | "ai-assisted";
-  readonly status: string;
-  readonly suburb: string;
-  readonly state: string;
-  readonly bedrooms: number;
-  readonly bathrooms: number;
-  readonly carSpaces: number;
-  readonly landSizeSqm: number;
-  readonly houseSizeSqm?: number;
-  readonly priceDisplay?: string;
-  readonly completionLabel?: string;
-  readonly isFeatured: boolean;
-  readonly isPublished: boolean;
-  readonly displayPriority: number;
-  readonly displayIsHome: boolean;
-  readonly displayOpeningNote?: string;
-  readonly currentStageId?: string;
+export type PropertyFormData = PropertyInput;
+
+/** Columns duplicated by `duplicatePropertyAction`. See the note there. */
+const DUPLICABLE_COLUMNS = `
+  name, slug, summary, description_blocks, description_source, status,
+  suburb, state, bedrooms, bathrooms, car_spaces, land_size_sqm,
+  house_size_sqm, price_display, completion_label, display_priority,
+  current_stage_id
+`;
+
+/** Maps validated input onto the `properties` row shape. */
+function toRow(data: PropertyInput): Record<string, unknown> {
+  return {
+    name: data.name,
+    slug: data.slug,
+    summary: data.summary,
+    description_blocks: data.descriptionBlocks ?? null,
+    description_source: data.descriptionSource ?? null,
+    status: data.status,
+    suburb: data.suburb,
+    state: data.state,
+    bedrooms: data.bedrooms,
+    bathrooms: data.bathrooms,
+    car_spaces: data.carSpaces,
+    land_size_sqm: data.landSizeSqm,
+    house_size_sqm: data.houseSizeSqm ?? null,
+    price_display: data.priceDisplay ?? null,
+    completion_label: data.completionLabel ?? null,
+    is_featured: data.isFeatured,
+    is_published: data.isPublished,
+    display_priority: data.displayPriority,
+    display_is_home: data.displayIsHome,
+    display_opening_note: data.displayOpeningNote ?? null,
+    current_stage_id: data.currentStageId ?? null,
+  };
 }
 
-// --- Validation ---
+/**
+ * Checks the slug is free.
+ *
+ * The database has a unique index and is the real authority; this exists so
+ * the common case produces "that slug is taken" against the slug field
+ * rather than a generic conflict message.
+ */
+async function slugIsTaken(
+  supabase: Awaited<ReturnType<typeof createAdminClient>>,
+  slug: string,
+  excludeId?: string,
+): Promise<boolean> {
+  let query = supabase.from("properties").select("id").eq("slug", slug);
 
-function validateSlug(slug: string): string | null {
-  if (!slug) return "Slug is required.";
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
-    return "Slug must be lowercase letters, numbers, and hyphens only.";
+  if (excludeId) {
+    query = query.neq("id", excludeId);
   }
-  if (slug.length > 100) return "Slug must be 100 characters or fewer.";
-  return null;
+
+  const { data } = await query.maybeSingle();
+
+  return data !== null;
 }
 
-function validateProperty(data: PropertyFormData): string | null {
-  if (!data.name?.trim()) return "Name is required.";
-  if (data.name.length > 200) return "Name must be 200 characters or fewer.";
-
-  const slugError = validateSlug(data.slug);
-  if (slugError) return slugError;
-
-  if (!data.summary?.trim()) return "Summary is required.";
-  if (data.summary.length > 500) return "Summary must be 500 characters or fewer.";
-
-  const validStatuses = ["move-in-ready", "under-construction", "completed", "sold"];
-  if (!validStatuses.includes(data.status)) return "Invalid status.";
-
-  if (!data.suburb?.trim()) return "Suburb is required.";
-  if (!data.state?.trim()) return "State is required.";
-
-  if (data.bedrooms < 0 || data.bedrooms > 20) return "Bedrooms must be 0-20.";
-  if (data.bathrooms < 0 || data.bathrooms > 20) return "Bathrooms must be 0-20.";
-  if (data.carSpaces < 0 || data.carSpaces > 10) return "Car spaces must be 0-10.";
-  if (data.landSizeSqm < 0) return "Land size must be non-negative.";
-  if (data.houseSizeSqm !== undefined && data.houseSizeSqm < 0) {
-    return "House size must be non-negative.";
-  }
-  if (data.displayPriority < 0) return "Display priority must be non-negative.";
-
-  return null;
-}
-
-// --- Actions ---
+/* --- Create ------------------------------------------------------------ */
 
 export async function createPropertyAction(
   data: PropertyFormData,
 ): Promise<PropertyActionResult> {
   await requireAdmin();
 
-  const validationError = validateProperty(data);
-  if (validationError) {
-    return { success: false, error: validationError };
+  const validation = validateProperty(data);
+
+  if (!validation.ok) {
+    return {
+      success: false,
+      error: summarise(validation.errors),
+      fieldErrors: validation.errors,
+    };
   }
 
+  const input = validation.value;
   const supabase = await createAdminClient();
 
-  // Check slug uniqueness
-  const { data: existing } = await supabase
-    .from("properties")
-    .select("id")
-    .eq("slug", data.slug)
-    .maybeSingle();
-
-  if (existing) {
-    return { success: false, error: "A property with this slug already exists." };
+  if (await slugIsTaken(supabase, input.slug)) {
+    return {
+      success: false,
+      error: "That slug is already in use. Choose another.",
+      fieldErrors: [{ field: "slug", message: "That slug is already in use." }],
+    };
   }
 
-  const insertPayload: unknown = {
-    name: data.name.trim(),
-    slug: data.slug,
-    summary: data.summary.trim(),
-    description_blocks: data.descriptionBlocks ?? null,
-    description_source: data.descriptionSource ?? null,
-    status: data.status,
-    suburb: data.suburb.trim(),
-    state: data.state.trim(),
-    bedrooms: data.bedrooms,
-    bathrooms: data.bathrooms,
-    car_spaces: data.carSpaces,
-    land_size_sqm: data.landSizeSqm,
-    house_size_sqm: data.houseSizeSqm ?? null,
-    price_display: data.priceDisplay?.trim() || null,
-    completion_label: data.completionLabel?.trim() || null,
-    is_featured: data.isFeatured,
-    is_published: data.isPublished,
-    display_priority: data.displayPriority,
-    display_is_home: data.displayIsHome,
-    display_opening_note: data.displayOpeningNote?.trim() || null,
-    current_stage_id: data.currentStageId || null,
-  };
+  // A brand-new property has no location settings and therefore no public
+  // projection, so it cannot be published in the same breath as being
+  // created. Forcing it to draft here is clearer than letting the publish
+  // gate reject it a moment later.
+  const row = { ...toRow(input), is_published: false };
 
-  const { data: created, error } = await (
-    supabase.from("properties") as unknown as {
-      insert(values: unknown): { select(columns: string): { single(): PromiseLike<{ data: { id: string } | null; error: { message: string } | null }> } };
-    }
-  ).insert(insertPayload).select("id").single();
+  const { data: created, error } = await supabase
+    .from("properties")
+    .insert(row as never)
+    .select("id")
+    .single();
 
   if (error || !created) {
-    return { success: false, error: error?.message ?? "Failed to create property." };
+    return {
+      success: false,
+      error: handleAdminError(
+        "Creating property",
+        error,
+        "Could not create the property. Please try again.",
+      ),
+    };
   }
+
+  const id = (created as unknown as { id: string }).id;
 
   await logAuditEvent({
     action: "created",
     entityType: "property",
-    entityId: created.id,
-    metadata: { name: data.name, slug: data.slug },
+    entityId: id,
+    metadata: { name: input.name, slug: input.slug },
   });
 
   revalidatePath("/admin/properties");
-  revalidatePath("/properties");
-  revalidatePath("/");
 
-  return { success: true, id: created.id };
+  return { success: true, id };
 }
+
+/* --- Update ----------------------------------------------------------- */
 
 export async function updatePropertyAction(
   id: string,
@@ -165,122 +172,182 @@ export async function updatePropertyAction(
 ): Promise<PropertyActionResult> {
   await requireAdmin();
 
-  const validationError = validateProperty(data);
-  if (validationError) {
-    return { success: false, error: validationError };
+  const validation = validateProperty(data);
+
+  if (!validation.ok) {
+    return {
+      success: false,
+      error: summarise(validation.errors),
+      fieldErrors: validation.errors,
+    };
   }
 
+  const input = validation.value;
   const supabase = await createAdminClient();
 
-  // Check slug uniqueness (exclude self)
-  const { data: existing } = await supabase
-    .from("properties")
-    .select("id")
-    .eq("slug", data.slug)
-    .neq("id", id)
-    .maybeSingle();
-
-  if (existing) {
-    return { success: false, error: "A property with this slug already exists." };
+  if (await slugIsTaken(supabase, input.slug, id)) {
+    return {
+      success: false,
+      error: "That slug is already in use by another property.",
+      fieldErrors: [{ field: "slug", message: "That slug is already in use." }],
+    };
   }
 
-  const updatePayload: unknown = {
-    name: data.name.trim(),
-    slug: data.slug,
-    summary: data.summary.trim(),
-    description_blocks: data.descriptionBlocks ?? null,
-    description_source: data.descriptionSource ?? null,
-    status: data.status,
-    suburb: data.suburb.trim(),
-    state: data.state.trim(),
-    bedrooms: data.bedrooms,
-    bathrooms: data.bathrooms,
-    car_spaces: data.carSpaces,
-    land_size_sqm: data.landSizeSqm,
-    house_size_sqm: data.houseSizeSqm ?? null,
-    price_display: data.priceDisplay?.trim() || null,
-    completion_label: data.completionLabel?.trim() || null,
-    is_featured: data.isFeatured,
-    is_published: data.isPublished,
-    display_priority: data.displayPriority,
-    display_is_home: data.displayIsHome,
-    display_opening_note: data.displayOpeningNote?.trim() || null,
-    current_stage_id: data.currentStageId || null,
-  };
+  // Turning `is_published` on through the general update path would bypass
+  // the publish gate, so readiness is checked here too.
+  if (input.isPublished) {
+    const blockers = await readPublishBlockers(supabase, id);
 
-  const { error } = await (
-    supabase.from("properties") as unknown as {
-      update(values: unknown): { eq(column: string, value: string): PromiseLike<{ error: { message: string } | null }> };
+    if (blockers.length > 0) {
+      return {
+        success: false,
+        error: "This property is not ready to publish yet.",
+        blockers,
+      };
     }
-  ).update(updatePayload).eq("id", id);
+  }
+
+  const { error } = await supabase
+    .from("properties")
+    .update(toRow(input) as never)
+    .eq("id", id);
 
   if (error) {
-    return { success: false, error: error.message ?? "Failed to update property." };
+    return {
+      success: false,
+      error: handleAdminError(
+        `Updating property ${id}`,
+        error,
+        "Could not save your changes. Please try again.",
+      ),
+    };
   }
 
   await logAuditEvent({
     action: "updated",
     entityType: "property",
     entityId: id,
-    metadata: { name: data.name, slug: data.slug },
+    metadata: { name: input.name, slug: input.slug },
   });
 
-  revalidatePath("/admin/properties");
-  revalidatePath(`/admin/properties/${id}`);
-  revalidatePath("/properties");
-  revalidatePath(`/properties/${data.slug}`);
-  revalidatePath("/");
+  revalidateProperty(id, input.slug);
 
   return { success: true, id };
 }
 
-export async function deletePropertyAction(id: string): Promise<PropertyActionResult> {
+/* --- Delete ----------------------------------------------------------- */
+
+export async function deletePropertyAction(
+  id: string,
+): Promise<PropertyActionResult> {
   await requireAdmin();
   const supabase = await createAdminClient();
 
-  // Get property name for audit
-  const { data: property } = await supabase
+  // Read the identity first: after the delete there is nothing left to
+  // describe in the audit entry. Child rows go with it via ON DELETE CASCADE.
+  const { data: existing } = await supabase
     .from("properties")
     .select("name, slug")
     .eq("id", id)
-    .single();
+    .maybeSingle();
 
-  const { error } = await (
-    supabase.from("properties") as unknown as {
-      delete(): { eq(column: string, value: string): PromiseLike<{ error: { message: string } | null }> };
-    }
-  ).delete().eq("id", id);
+  if (!existing) {
+    return {
+      success: false,
+      error: "That property no longer exists. It may already have been deleted.",
+    };
+  }
+
+  const property = existing as unknown as { name: string; slug: string };
+
+  const { error } = await supabase.from("properties").delete().eq("id", id);
 
   if (error) {
-    return { success: false, error: error.message ?? "Failed to delete property." };
+    return {
+      success: false,
+      error: handleAdminError(
+        `Deleting property ${id}`,
+        error,
+        "Could not delete the property. Please try again.",
+      ),
+    };
   }
 
   await logAuditEvent({
     action: "deleted",
     entityType: "property",
     entityId: id,
-    metadata: { name: (property as unknown as { name: string })?.name },
+    metadata: { name: property.name, slug: property.slug },
   });
 
-  revalidatePath("/admin/properties");
-  revalidatePath("/properties");
-  revalidatePath("/");
+  revalidateProperty(id, property.slug);
 
   return { success: true };
 }
 
-export async function publishPropertyAction(id: string): Promise<PropertyActionResult> {
+/* --- Publish / unpublish --------------------------------------------- */
+
+/**
+ * Reads the publish blockers reported by the database.
+ *
+ * The check lives in `property_publish_blockers` (migration 0008) rather
+ * than here because it needs to see rows across three tables. Doing it in
+ * one round trip also means the answer cannot be stale by the time the
+ * update runs.
+ */
+async function readPublishBlockers(
+  supabase: Awaited<ReturnType<typeof createAdminClient>>,
+  id: string,
+): Promise<string[]> {
+  const { data, error } = await callRpc(supabase, "property_publish_blockers", {
+    p_property_id: id,
+  });
+
+  if (error) {
+    // Fail closed: if readiness cannot be established, do not publish.
+    handleAdminError(`Reading publish blockers for ${id}`, error);
+    return ["Could not confirm this property is ready to publish."];
+  }
+
+  return data ?? [];
+}
+
+export async function publishPropertyAction(
+  id: string,
+): Promise<PropertyActionResult> {
   await requireAdmin();
   const supabase = await createAdminClient();
 
-  const { error } = await (
-    supabase.from("properties") as unknown as {
-      update(values: unknown): { eq(column: string, value: string): PromiseLike<{ error: { message: string } | null }> };
-    }
-  ).update({ is_published: true }).eq("id", id);
+  const blockers = await readPublishBlockers(supabase, id);
+
+  if (blockers.length > 0) {
+    return {
+      success: false,
+      error: "This property is not ready to publish yet.",
+      blockers,
+    };
+  }
+
+  const { data: updated, error } = await supabase
+    .from("properties")
+    .update({ is_published: true } as never)
+    .eq("id", id)
+    .select("slug")
+    .maybeSingle();
 
   if (error) {
-    return { success: false, error: error.message ?? "Failed to publish property." };
+    return {
+      success: false,
+      error: handleAdminError(
+        `Publishing property ${id}`,
+        error,
+        "Could not publish the property. Please try again.",
+      ),
+    };
+  }
+
+  if (!updated) {
+    return { success: false, error: "That property no longer exists." };
   }
 
   await logAuditEvent({
@@ -289,25 +356,39 @@ export async function publishPropertyAction(id: string): Promise<PropertyActionR
     entityId: id,
   });
 
-  revalidatePath("/admin/properties");
-  revalidatePath("/properties");
-  revalidatePath("/");
+  revalidateProperty(id, (updated as unknown as { slug: string }).slug);
 
-  return { success: true };
+  return { success: true, id };
 }
 
-export async function unpublishPropertyAction(id: string): Promise<PropertyActionResult> {
+export async function unpublishPropertyAction(
+  id: string,
+): Promise<PropertyActionResult> {
   await requireAdmin();
   const supabase = await createAdminClient();
 
-  const { error } = await (
-    supabase.from("properties") as unknown as {
-      update(values: unknown): { eq(column: string, value: string): PromiseLike<{ error: { message: string } | null }> };
-    }
-  ).update({ is_published: false }).eq("id", id);
+  // Unpublishing needs no readiness check — removing something from public
+  // view is always safe.
+  const { data: updated, error } = await supabase
+    .from("properties")
+    .update({ is_published: false } as never)
+    .eq("id", id)
+    .select("slug")
+    .maybeSingle();
 
   if (error) {
-    return { success: false, error: error.message ?? "Failed to unpublish property." };
+    return {
+      success: false,
+      error: handleAdminError(
+        `Unpublishing property ${id}`,
+        error,
+        "Could not unpublish the property. Please try again.",
+      ),
+    };
+  }
+
+  if (!updated) {
+    return { success: false, error: "That property no longer exists." };
   }
 
   await logAuditEvent({
@@ -316,73 +397,135 @@ export async function unpublishPropertyAction(id: string): Promise<PropertyActio
     entityId: id,
   });
 
-  revalidatePath("/admin/properties");
-  revalidatePath("/properties");
-  revalidatePath("/");
+  revalidateProperty(id, (updated as unknown as { slug: string }).slug);
 
-  return { success: true };
+  return { success: true, id };
 }
 
-export async function duplicatePropertyAction(id: string): Promise<PropertyActionResult> {
+/* --- Duplicate -------------------------------------------------------- */
+
+/**
+ * Duplicates the core property record only.
+ *
+ * ## Why core-only
+ *
+ * The alternative — copying images, resources, features and location — was
+ * considered and rejected:
+ *
+ * - **Location must not be copied.** Two properties sharing one set of
+ *   coordinates is wrong by construction, and copying the privacy settings
+ *   would silently apply one owner's decision to a different home. The copy
+ *   therefore starts with no location, and the publish gate requires the
+ *   administrator to set one before it can go live.
+ * - **Media must not be copied.** Storage objects would either be shared by
+ *   reference — so deleting one property's photograph removes it from the
+ *   other — or duplicated in the bucket, which is a storage cost incurred
+ *   without being asked for.
+ *
+ * What a duplicate is *for* is reusing a floor plan's specifications on a
+ * different lot. That is exactly the core record.
+ *
+ * The result is always a draft, and the UI says what was and was not copied.
+ */
+export async function duplicatePropertyAction(
+  id: string,
+): Promise<PropertyActionResult> {
   await requireAdmin();
   const supabase = await createAdminClient();
 
-  // Load the source property
-  const { data: source } = await supabase
+  const { data: sourceData, error: readError } = await supabase
     .from("properties")
-    .select("*")
+    .select(DUPLICABLE_COLUMNS)
     .eq("id", id)
-    .single();
+    .maybeSingle();
 
-  if (!source) {
-    return { success: false, error: "Source property not found." };
+  if (readError) {
+    return {
+      success: false,
+      error: handleAdminError(
+        `Reading property ${id} to duplicate`,
+        readError,
+        "Could not read the property to duplicate.",
+      ),
+    };
   }
 
-  const sourceRow = source as unknown as Record<string, unknown>;
+  if (!sourceData) {
+    return { success: false, error: "That property no longer exists." };
+  }
 
-  // Create duplicate with modified name/slug, unpublished
-  const duplicatePayload: unknown = {
-    name: `${sourceRow.name} (copy)`,
-    slug: `${sourceRow.slug}-copy-${Date.now()}`,
-    summary: sourceRow.summary,
-    description_blocks: sourceRow.description_blocks,
-    description_source: sourceRow.description_source,
-    status: sourceRow.status,
-    suburb: sourceRow.suburb,
-    state: sourceRow.state,
-    bedrooms: sourceRow.bedrooms,
-    bathrooms: sourceRow.bathrooms,
-    car_spaces: sourceRow.car_spaces,
-    land_size_sqm: sourceRow.land_size_sqm,
-    house_size_sqm: sourceRow.house_size_sqm,
-    price_display: sourceRow.price_display,
-    completion_label: sourceRow.completion_label,
+  const source = sourceData as unknown as Record<string, unknown>;
+  const sourceName = String(source.name ?? "Property");
+  const sourceSlug = String(source.slug ?? "property");
+
+  const copy = {
+    ...source,
+    name: truncate(`${sourceName} (copy)`, 200),
+    slug: uniqueSlug(sourceSlug),
+    // A copy is never featured, never a display home and never published:
+    // each of those is a deliberate decision about a specific property.
     is_featured: false,
     is_published: false,
-    display_priority: ((sourceRow.display_priority as number) ?? 0) + 1,
     display_is_home: false,
     display_opening_note: null,
-    current_stage_id: sourceRow.current_stage_id,
   };
 
-  const { data: created, error } = await (
-    supabase.from("properties") as unknown as {
-      insert(values: unknown): { select(columns: string): { single(): PromiseLike<{ data: { id: string } | null; error: { message: string } | null }> } };
-    }
-  ).insert(duplicatePayload).select("id").single();
+  const { data: created, error } = await supabase
+    .from("properties")
+    .insert(copy as never)
+    .select("id")
+    .single();
 
   if (error || !created) {
-    return { success: false, error: error?.message ?? "Failed to duplicate property." };
+    return {
+      success: false,
+      error: handleAdminError(
+        `Duplicating property ${id}`,
+        error,
+        "Could not duplicate the property. Please try again.",
+      ),
+    };
   }
+
+  const newId = (created as unknown as { id: string }).id;
 
   await logAuditEvent({
     action: "created",
     entityType: "property",
-    entityId: created.id,
-    metadata: { duplicatedFrom: id, name: `${sourceRow.name} (copy)` },
+    entityId: newId,
+    metadata: { duplicatedFrom: id, scope: "core-only" },
   });
 
   revalidatePath("/admin/properties");
 
-  return { success: true, id: created.id };
+  return { success: true, id: newId };
+}
+
+/* --- Helpers ---------------------------------------------------------- */
+
+/**
+ * Derives a slug that will not collide.
+ *
+ * A short random suffix rather than `Date.now()`: two duplicates created in
+ * the same millisecond would otherwise collide, and a timestamp in a URL
+ * reads like a mistake.
+ */
+function uniqueSlug(base: string): string {
+  const suffix = Math.random().toString(36).slice(2, 7);
+  const room = 100 - suffix.length - "-copy-".length;
+
+  return `${base.slice(0, Math.max(1, room))}-copy-${suffix}`;
+}
+
+function truncate(value: string, max: number): string {
+  return value.length <= max ? value : value.slice(0, max);
+}
+
+/** Every surface that can show a property, in one place. */
+function revalidateProperty(id: string, slug: string): void {
+  revalidatePath("/admin/properties");
+  revalidatePath(`/admin/properties/${id}`);
+  revalidatePath("/properties");
+  revalidatePath(`/properties/${slug}`);
+  revalidatePath("/");
 }

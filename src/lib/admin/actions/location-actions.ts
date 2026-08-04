@@ -3,25 +3,50 @@
 import { revalidatePath } from "next/cache";
 
 import { requireAdmin } from "@/lib/admin/auth";
-import { logAuditEvent } from "@/lib/admin/audit";
+import { handleAdminError } from "@/lib/admin/errors";
+import {
+  validateLocation,
+  type LocationInput,
+} from "@/lib/admin/validation/location";
+import { callRpc } from "@/lib/admin/rpc";
+import { summarise, type FieldError } from "@/lib/admin/validation/result";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   buildPublicLocation,
   toPublicLocationRow,
 } from "@/lib/properties/projection";
-import type { PropertyLocationSettingsRow, PropertyPrivateLocationsRow } from "@/types/database";
+import type {
+  PropertyLocationSettingsRow,
+  PropertyPrivateLocationsRow,
+} from "@/types/database";
 
 /**
- * Server Action for saving location data and regenerating the public projection.
+ * Location and privacy saving.
  *
- * This action:
- * 1. Saves private coordinates to property_private_locations
- * 2. Saves privacy settings to property_location_settings
- * 3. Runs the projection pipeline (same algorithm as generate-public-locations.ts)
- * 4. Upserts the result into property_public_locations
+ * ## Why this goes through a database function
  *
- * Uses the authenticated admin client (not service-role) because the admin
- * RLS policies now allow access to private tables for admins.
+ * Saving a location changes three tables: the stored position, the privacy
+ * settings, and the generated public projection. Written as three separate
+ * statements — which is what this action used to do — a failure on the third
+ * leaves the first two committed. The result is a property whose stored
+ * position has moved but whose published marker still reflects the previous
+ * settings, or whose visibility says `hidden` while a coordinate from the
+ * previous save is still readable by anonymous visitors.
+ *
+ * That is not a cosmetic inconsistency. It is the precise failure mode the
+ * privacy system exists to prevent.
+ *
+ * `save_property_location` (migration 0008) performs all three writes plus
+ * the audit entry inside one transaction, so they commit together or not at
+ * all.
+ *
+ * ## Where the privacy algorithm lives
+ *
+ * Still in TypeScript, in `lib/properties/privacy.ts`. This action derives
+ * the projection *before* the call and passes the result in. The database
+ * function stores what it is given and never recomputes it — a second
+ * implementation in SQL would be a second definition of what may be
+ * published, and the two would drift.
  */
 
 export interface LocationFormData {
@@ -46,6 +71,7 @@ export interface LocationFormData {
 export interface LocationActionResult {
   readonly success: boolean;
   readonly error?: string;
+  readonly fieldErrors?: readonly FieldError[];
 }
 
 export async function saveLocationAction(
@@ -54,160 +80,162 @@ export async function saveLocationAction(
 ): Promise<LocationActionResult> {
   await requireAdmin();
 
-  // Validate coordinates
-  if (
-    !Number.isFinite(data.privateLatitude) ||
-    Math.abs(data.privateLatitude) > 90
-  ) {
-    return { success: false, error: "Latitude must be between -90 and 90." };
-  }
-  if (
-    !Number.isFinite(data.privateLongitude) ||
-    Math.abs(data.privateLongitude) > 180
-  ) {
-    return { success: false, error: "Longitude must be between -180 and 180." };
+  if (!propertyId) {
+    return {
+      success: false,
+      error: "Save the property before setting its location.",
+    };
   }
 
-  // Validate approximate requires radius
-  if (data.locationVisibility === "approximate" && !data.privacyRadiusMeters) {
-    return { success: false, error: "Approximate visibility requires a privacy radius." };
+  /* --- Validate before touching the database ------------------------- */
+
+  const validation = validateLocation(data as LocationInput);
+
+  if (!validation.ok) {
+    return {
+      success: false,
+      error: summarise(validation.errors),
+      fieldErrors: validation.errors,
+    };
   }
 
-  // Validate manual requires coordinates
-  if (data.publicMarkerMode === "manual") {
-    if (data.manualPublicLatitude === undefined || data.manualPublicLongitude === undefined) {
-      return { success: false, error: "Manual marker mode requires manual coordinates." };
-    }
-  }
-
+  const input = validation.value;
   const supabase = await createAdminClient();
 
-  // Get property info for the projection
-  const { data: property } = await supabase
+  /* --- The projection needs the property's own suburb and state ------ */
+
+  const { data: propertyData, error: propertyError } = await supabase
     .from("properties")
     .select("name, suburb, state, slug")
     .eq("id", propertyId)
-    .single();
+    .maybeSingle();
 
-  if (!property) {
-    return { success: false, error: "Property not found." };
+  if (propertyError) {
+    return {
+      success: false,
+      error: handleAdminError(
+        `Loading property ${propertyId} before location save`,
+        propertyError,
+        "Could not load this property. Please try again.",
+      ),
+    };
   }
 
-  const propertyRow = property as unknown as { name: string; suburb: string; state: string; slug: string };
-
-  // Upsert private location
-  const privateLocationPayload: unknown = {
-    property_id: propertyId,
-    private_latitude: data.privateLatitude,
-    private_longitude: data.privateLongitude,
-    house_number: data.houseNumber || null,
-    street: data.street || null,
-    postcode: data.postcode || null,
-  };
-
-  const { error: locError } = await (
-    supabase.from("property_private_locations") as unknown as {
-      upsert(values: unknown, options: { onConflict: string }): PromiseLike<{ error: { message: string } | null }>;
-    }
-  ).upsert(privateLocationPayload, { onConflict: "property_id" });
-
-  if (locError) {
-    return { success: false, error: `Failed to save coordinates: ${locError.message}` };
+  if (!propertyData) {
+    return {
+      success: false,
+      error: "That property no longer exists. It may have been deleted.",
+    };
   }
 
-  // Upsert location settings
-  const settingsPayload: unknown = {
-    property_id: propertyId,
-    location_visibility: data.locationVisibility,
-    privacy_radius_meters: data.locationVisibility === "approximate" ? data.privacyRadiusMeters : null,
-    public_marker_mode: data.publicMarkerMode,
-    manual_public_latitude: data.publicMarkerMode === "manual" ? (data.manualPublicLatitude ?? null) : null,
-    manual_public_longitude: data.publicMarkerMode === "manual" ? (data.manualPublicLongitude ?? null) : null,
-    suburb_reference: data.suburbReference || null,
-    show_house_number: data.showHouseNumber,
-    show_street: data.showStreet,
-    show_suburb: data.showSuburb,
-    show_postcode: data.showPostcode,
-    allow_directions: data.allowDirections ?? null,
+  const property = propertyData as unknown as {
+    name: string;
+    suburb: string;
+    state: string;
+    slug: string;
   };
 
-  const { error: settingsError } = await (
-    supabase.from("property_location_settings") as unknown as {
-      upsert(values: unknown, options: { onConflict: string }): PromiseLike<{ error: { message: string } | null }>;
-    }
-  ).upsert(settingsPayload, { onConflict: "property_id" });
+  /* --- Derive the projection with the canonical pipeline -------------- */
+  //
+  // These row objects exist only to feed `buildPublicLocation`, which takes
+  // database-shaped input. Nothing here is written — the RPC below does all
+  // the writing.
 
-  if (settingsError) {
-    return { success: false, error: `Failed to save privacy settings: ${settingsError.message}` };
-  }
+  const isApproximate = input.locationVisibility === "approximate";
+  const isManual = input.publicMarkerMode === "manual";
 
-  // Regenerate public projection using the existing pipeline
-  const settings: PropertyLocationSettingsRow = {
+  const radius = isApproximate ? input.privacyRadiusMeters : null;
+  const manualLatitude = isManual ? (input.manualPublicLatitude ?? null) : null;
+  const manualLongitude = isManual ? (input.manualPublicLongitude ?? null) : null;
+
+  const now = new Date().toISOString();
+
+  const settingsRow: PropertyLocationSettingsRow = {
     property_id: propertyId,
-    location_visibility: data.locationVisibility,
-    privacy_radius_meters: data.locationVisibility === "approximate" ? data.privacyRadiusMeters : null,
-    public_marker_mode: data.publicMarkerMode,
-    manual_public_latitude: data.publicMarkerMode === "manual" ? (data.manualPublicLatitude ?? null) : null,
-    manual_public_longitude: data.publicMarkerMode === "manual" ? (data.manualPublicLongitude ?? null) : null,
-    suburb_reference: data.suburbReference || null,
-    show_house_number: data.showHouseNumber,
-    show_street: data.showStreet,
-    show_suburb: data.showSuburb,
-    show_postcode: data.showPostcode,
-    allow_directions: data.allowDirections ?? null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
+    location_visibility: input.locationVisibility,
+    privacy_radius_meters: radius,
+    public_marker_mode: input.publicMarkerMode,
+    manual_public_latitude: manualLatitude,
+    manual_public_longitude: manualLongitude,
+    suburb_reference: input.suburbReference ?? null,
+    show_house_number: input.showHouseNumber,
+    show_street: input.showStreet,
+    show_suburb: input.showSuburb,
+    show_postcode: input.showPostcode,
+    allow_directions: input.allowDirections ?? null,
+    created_at: now,
+    updated_at: now,
   };
 
-  const privateLocationRow: PropertyPrivateLocationsRow = {
+  const privateRow: PropertyPrivateLocationsRow = {
     property_id: propertyId,
-    private_latitude: data.privateLatitude,
-    private_longitude: data.privateLongitude,
-    house_number: data.houseNumber || null,
-    street: data.street || null,
-    postcode: data.postcode || null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
+    private_latitude: input.privateLatitude,
+    private_longitude: input.privateLongitude,
+    house_number: input.houseNumber ?? null,
+    street: input.street ?? null,
+    postcode: input.postcode ?? null,
+    created_at: now,
+    updated_at: now,
   };
 
   const publicLocation = buildPublicLocation({
     propertyId,
-    propertyName: propertyRow.name,
-    suburb: propertyRow.suburb,
-    state: propertyRow.state,
-    postcode: data.postcode ?? "",
-    settings,
-    privateLocation: privateLocationRow,
+    propertyName: property.name,
+    suburb: property.suburb,
+    state: property.state,
+    postcode: input.postcode ?? "",
+    settings: settingsRow,
+    privateLocation: privateRow,
   });
 
-  const publicRow = toPublicLocationRow(propertyId, publicLocation);
+  const projection = toPublicLocationRow(propertyId, publicLocation);
 
-  // Upsert public projection
-  const projectionPayload: unknown = {
-    ...publicRow,
-    generated_at: new Date().toISOString(),
-  };
+  /* --- One transactional call ---------------------------------------- */
 
-  const { error: projError } = await (
-    supabase.from("property_public_locations") as unknown as {
-      upsert(values: unknown, options: { onConflict: string }): PromiseLike<{ error: { message: string } | null }>;
-    }
-  ).upsert(projectionPayload, { onConflict: "property_id" });
+  const { error: rpcError } = await callRpc(supabase, "save_property_location", {
+    p_property_id: propertyId,
+    p_private_latitude: input.privateLatitude,
+    p_private_longitude: input.privateLongitude,
+    p_house_number: input.houseNumber ?? null,
+    p_street: input.street ?? null,
+    p_postcode: input.postcode ?? null,
+    p_location_visibility: input.locationVisibility,
+    p_privacy_radius_meters: radius,
+    p_public_marker_mode: input.publicMarkerMode,
+    p_manual_public_latitude: manualLatitude,
+    p_manual_public_longitude: manualLongitude,
+    p_suburb_reference: input.suburbReference ?? null,
+    p_show_house_number: input.showHouseNumber,
+    p_show_street: input.showStreet,
+    p_show_suburb: input.showSuburb,
+    p_show_postcode: input.showPostcode,
+    p_allow_directions: input.allowDirections ?? null,
+    p_public_latitude: projection.public_latitude,
+    p_public_longitude: projection.public_longitude,
+    p_public_address: projection.public_address,
+    p_marker_mode: projection.marker_mode,
+    p_location_label: projection.location_label,
+    p_accuracy_note: projection.accuracy_note,
+    p_public_allow_directions: projection.allow_directions,
+  });
 
-  if (projError) {
-    return { success: false, error: `Failed to save public projection: ${projError.message}` };
+  if (rpcError) {
+    return {
+      success: false,
+      error: handleAdminError(
+        `Atomic location save for property ${propertyId}`,
+        rpcError,
+        "Could not save the location. No changes were made.",
+      ),
+    };
   }
 
-  await logAuditEvent({
-    action: "updated",
-    entityType: "property_location",
-    entityId: propertyId,
-    metadata: { visibility: data.locationVisibility },
-  });
+  /* --- Refresh every surface that reads a location -------------------- */
 
   revalidatePath(`/admin/properties/${propertyId}`);
+  revalidatePath("/admin/properties");
   revalidatePath("/properties");
-  revalidatePath(`/properties/${propertyRow.slug}`);
+  revalidatePath(`/properties/${property.slug}`);
   revalidatePath("/");
 
   return { success: true };

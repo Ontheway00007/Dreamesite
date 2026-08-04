@@ -6,250 +6,386 @@ import {
   saveLocationAction,
   type LocationFormData,
 } from "@/lib/admin/actions/location-actions";
-import type { PropertyLocationSettingsRow, PropertyPrivateLocationsRow } from "@/types/database";
+import type { FieldError } from "@/lib/admin/validation/result";
+import type {
+  PropertyLocationSettingsRow,
+  PropertyPrivateLocationsRow,
+} from "@/types/database";
+import { AdminAlert } from "@/components/admin/admin-alert";
+import { Checkbox, Field } from "@/components/admin/form-controls";
+import type {
+  LocationVisibility,
+  PrivacyRadiusMeters,
+  PublicMarkerMode,
+} from "@/types";
 
 interface Props {
   propertyId?: string;
   privateLocation?: PropertyPrivateLocationsRow;
   locationSettings?: PropertyLocationSettingsRow;
+  /** Called after a successful save so the parent can refresh readiness. */
+  onSaved?: () => void;
+}
+
+const RADIUS_OPTIONS: ReadonlyArray<{ value: PrivacyRadiusMeters; label: string }> = [
+  { value: 100, label: "100 m" },
+  { value: 250, label: "250 m" },
+  { value: 500, label: "500 m" },
+  { value: 1000, label: "1 km" },
+  { value: 2000, label: "2 km" },
+  { value: 5000, label: "5 km" },
+];
+
+function toFieldMap(errors: readonly FieldError[] | undefined) {
+  if (!errors) return {};
+
+  return errors.reduce<Record<string, string>>((map, error) => {
+    if (!map[error.field]) map[error.field] = error.message;
+    return map;
+  }, {});
 }
 
 export function LocationEditor({
   propertyId,
   privateLocation,
   locationSettings,
+  onSaved,
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  // Private location state
-  const [latitude, setLatitude] = useState(privateLocation?.private_latitude ?? -37.53);
-  const [longitude, setLongitude] = useState(privateLocation?.private_longitude ?? 144.88);
-  const [houseNumber, setHouseNumber] = useState(privateLocation?.house_number ?? "");
+  // Stored position. Left empty rather than defaulted to a plausible-looking
+  // coordinate — a pre-filled position an administrator forgets to change
+  // would publish a marker for the wrong place.
+  const [latitude, setLatitude] = useState<string>(
+    privateLocation ? String(privateLocation.private_latitude) : "",
+  );
+  const [longitude, setLongitude] = useState<string>(
+    privateLocation ? String(privateLocation.private_longitude) : "",
+  );
+  const [houseNumber, setHouseNumber] = useState(
+    privateLocation?.house_number ?? "",
+  );
   const [street, setStreet] = useState(privateLocation?.street ?? "");
   const [postcode, setPostcode] = useState(privateLocation?.postcode ?? "");
 
-  // Privacy settings state
-  const [visibility, setVisibility] = useState<string>(locationSettings?.location_visibility ?? "suburb");
-  const [radius, setRadius] = useState<number>(locationSettings?.privacy_radius_meters ?? 500);
-  const [markerMode, setMarkerMode] = useState<string>(locationSettings?.public_marker_mode ?? "automatic");
-  const [manualLat, setManualLat] = useState(locationSettings?.manual_public_latitude ?? undefined);
-  const [manualLng, setManualLng] = useState(locationSettings?.manual_public_longitude ?? undefined);
-  const [showHouseNumber, setShowHouseNumber] = useState(locationSettings?.show_house_number ?? false);
-  const [showStreet, setShowStreet] = useState(locationSettings?.show_street ?? false);
-  const [showSuburb, setShowSuburb] = useState(locationSettings?.show_suburb ?? true);
-  const [showPostcode, setShowPostcode] = useState(locationSettings?.show_postcode ?? true);
+  // Privacy configuration
+  const [visibility, setVisibility] = useState<LocationVisibility>(
+    (locationSettings?.location_visibility as LocationVisibility) ?? "suburb",
+  );
+  const [radius, setRadius] = useState<PrivacyRadiusMeters>(
+    (locationSettings?.privacy_radius_meters as PrivacyRadiusMeters) ?? 500,
+  );
+  const [markerMode, setMarkerMode] = useState<PublicMarkerMode>(
+    (locationSettings?.public_marker_mode as PublicMarkerMode) ?? "automatic",
+  );
+  const [manualLatitude, setManualLatitude] = useState<string>(
+    locationSettings?.manual_public_latitude != null
+      ? String(locationSettings.manual_public_latitude)
+      : "",
+  );
+  const [manualLongitude, setManualLongitude] = useState<string>(
+    locationSettings?.manual_public_longitude != null
+      ? String(locationSettings.manual_public_longitude)
+      : "",
+  );
+  const [showHouseNumber, setShowHouseNumber] = useState(
+    locationSettings?.show_house_number ?? false,
+  );
+  const [showStreet, setShowStreet] = useState(
+    locationSettings?.show_street ?? false,
+  );
+  const [showSuburb, setShowSuburb] = useState(
+    locationSettings?.show_suburb ?? true,
+  );
+  const [showPostcode, setShowPostcode] = useState(
+    locationSettings?.show_postcode ?? true,
+  );
   const [allowDirections, setAllowDirections] = useState<boolean | undefined>(
     locationSettings?.allow_directions ?? undefined,
   );
 
+  // A location belongs to a property row. Until one exists there is nothing
+  // to attach it to, and the save would fail on a foreign key — so the form
+  // is not offered at all.
   if (!propertyId) {
     return (
-      <div className="bg-surface border-border rounded-xl border p-6">
-        <p className="text-foreground-muted text-sm">
-          Save the property first to configure its location and privacy settings.
+      <AdminAlert tone="info" title="Save the property first">
+        <p className="mt-1">
+          A location is stored against a saved property. Create the property on
+          the Details tab, then set its location here.
         </p>
-      </div>
+      </AdminAlert>
     );
   }
 
   function handleSave() {
     setError(null);
-    setSuccess(false);
+    setSaved(false);
+    setFieldErrors({});
+
+    const parseCoordinate = (value: string): number =>
+      value.trim() === "" ? Number.NaN : Number(value);
+
+    const payload: LocationFormData = {
+      privateLatitude: parseCoordinate(latitude),
+      privateLongitude: parseCoordinate(longitude),
+      houseNumber: houseNumber || undefined,
+      street: street || undefined,
+      postcode: postcode || undefined,
+      locationVisibility: visibility,
+      privacyRadiusMeters: radius,
+      publicMarkerMode: markerMode,
+      manualPublicLatitude:
+        manualLatitude.trim() === "" ? undefined : Number(manualLatitude),
+      manualPublicLongitude:
+        manualLongitude.trim() === "" ? undefined : Number(manualLongitude),
+      showHouseNumber,
+      showStreet,
+      showSuburb,
+      showPostcode,
+      allowDirections,
+    };
 
     startTransition(async () => {
-      const data: LocationFormData = {
-        privateLatitude: latitude,
-        privateLongitude: longitude,
-        houseNumber: houseNumber || undefined,
-        street: street || undefined,
-        postcode: postcode || undefined,
-        locationVisibility: visibility as LocationFormData["locationVisibility"],
-        privacyRadiusMeters: radius as LocationFormData["privacyRadiusMeters"],
-        publicMarkerMode: markerMode as LocationFormData["publicMarkerMode"],
-        manualPublicLatitude: manualLat,
-        manualPublicLongitude: manualLng,
-        showHouseNumber,
-        showStreet,
-        showSuburb,
-        showPostcode,
-        allowDirections: allowDirections ?? undefined,
-      };
+      const result = await saveLocationAction(propertyId as string, payload);
 
-      const result = await saveLocationAction(propertyId!, data);
       if (result.success) {
-        setSuccess(true);
-        setTimeout(() => setSuccess(false), 3000);
-      } else {
-        setError(result.error ?? "Failed to save location.");
+        setSaved(true);
+        onSaved?.();
+        return;
       }
+
+      setError(result.error ?? "Could not save the location.");
+      setFieldErrors(toFieldMap(result.fieldErrors));
     });
   }
 
   return (
     <div className="space-y-6">
-      {error && (
-        <div className="bg-red-500/10 border-red-500/20 rounded-lg border px-4 py-3 text-sm text-red-400">
-          {error}
-        </div>
-      )}
-      {success && (
-        <div className="bg-emerald-500/10 border-emerald-500/20 rounded-lg border px-4 py-3 text-sm text-emerald-400">
-          Location saved and public projection regenerated.
-        </div>
+      {error && <AdminAlert tone="error" title={error} />}
+      {saved && (
+        <AdminAlert tone="success" title="Location saved">
+          <p className="mt-1">
+            The public marker has been regenerated from these settings.
+          </p>
+        </AdminAlert>
       )}
 
-      {/* Private Coordinates */}
-      <div className="bg-surface border-border space-y-4 rounded-xl border p-6">
-        <h3 className="text-foreground text-sm font-semibold uppercase tracking-wider">
-          Private Coordinates
-        </h3>
-        <p className="text-foreground-subtle text-xs">
-          These are never exposed publicly. The privacy settings below control what visitors see.
-        </p>
+      {/* Stored position */}
+      <section className="bg-surface border-border space-y-4 rounded-xl border p-6">
+        <header>
+          <h3 className="text-foreground text-sm font-semibold uppercase tracking-wider">
+            Stored position
+          </h3>
+          <p className="text-foreground-subtle mt-1 text-xs">
+            Never published as-is. The privacy settings below decide what a
+            visitor actually sees.
+          </p>
+        </header>
+
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <label className="text-foreground-muted text-sm font-medium">Latitude</label>
-            <input type="number" step="any" value={latitude} onChange={(e) => setLatitude(Number(e.target.value))} className="admin-input" />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-foreground-muted text-sm font-medium">Longitude</label>
-            <input type="number" step="any" value={longitude} onChange={(e) => setLongitude(Number(e.target.value))} className="admin-input" />
-          </div>
+          <Field label="Latitude" required error={fieldErrors.privateLatitude}>
+            <input
+              type="number"
+              step="any"
+              value={latitude}
+              onChange={(event) => setLatitude(event.target.value)}
+              className="admin-input"
+              placeholder="-37.5312"
+            />
+          </Field>
+          <Field label="Longitude" required error={fieldErrors.privateLongitude}>
+            <input
+              type="number"
+              step="any"
+              value={longitude}
+              onChange={(event) => setLongitude(event.target.value)}
+              className="admin-input"
+              placeholder="144.8861"
+            />
+          </Field>
         </div>
 
-        <h4 className="text-foreground-muted mt-4 text-sm font-medium">Address Parts</h4>
         <div className="grid gap-4 sm:grid-cols-3">
-          <div className="space-y-1.5">
-            <label className="text-foreground-subtle text-xs">House number</label>
-            <input type="text" value={houseNumber} onChange={(e) => setHouseNumber(e.target.value)} className="admin-input" />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-foreground-subtle text-xs">Street</label>
-            <input type="text" value={street} onChange={(e) => setStreet(e.target.value)} className="admin-input" />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-foreground-subtle text-xs">Postcode</label>
-            <input type="text" value={postcode} onChange={(e) => setPostcode(e.target.value)} className="admin-input" />
-          </div>
+          <Field label="House number">
+            <input
+              type="text"
+              value={houseNumber}
+              onChange={(event) => setHouseNumber(event.target.value)}
+              className="admin-input"
+            />
+          </Field>
+          <Field label="Street">
+            <input
+              type="text"
+              value={street}
+              onChange={(event) => setStreet(event.target.value)}
+              className="admin-input"
+            />
+          </Field>
+          <Field label="Postcode" error={fieldErrors.postcode}>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={postcode}
+              onChange={(event) => setPostcode(event.target.value)}
+              className="admin-input"
+              placeholder="3064"
+            />
+          </Field>
         </div>
-      </div>
+      </section>
 
-      {/* Privacy Settings */}
-      <div className="bg-surface border-border space-y-4 rounded-xl border p-6">
-        <h3 className="text-foreground text-sm font-semibold uppercase tracking-wider">
-          Privacy Settings
-        </h3>
+      {/* Privacy */}
+      <section className="bg-surface border-border space-y-4 rounded-xl border p-6">
+        <header>
+          <h3 className="text-foreground text-sm font-semibold uppercase tracking-wider">
+            Privacy
+          </h3>
+          <p className="text-foreground-subtle mt-1 text-xs">
+            Independent of status. A sold home can be shown exactly, and a home
+            for sale can be hidden.
+          </p>
+        </header>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <label className="text-foreground-muted text-sm font-medium">Location visibility</label>
-            <select value={visibility} onChange={(e) => setVisibility(e.target.value)} className="admin-input">
-              <option value="exact">Exact — publish stored position</option>
-              <option value="approximate">Approximate — generalised within radius</option>
-              <option value="suburb">Suburb only — suburb centre marker</option>
-              <option value="hidden">Hidden — no marker at all</option>
+          <Field label="Marker precision" required error={fieldErrors.locationVisibility}>
+            <select
+              value={visibility}
+              onChange={(event) =>
+                setVisibility(event.target.value as LocationVisibility)
+              }
+              className="admin-input"
+            >
+              <option value="exact">Exact — the stored position</option>
+              <option value="approximate">Approximate — generalised</option>
+              <option value="suburb">Suburb only — the suburb centre</option>
+              <option value="hidden">Hidden — no marker</option>
             </select>
-          </div>
+          </Field>
 
           {visibility === "approximate" && (
-            <div className="space-y-1.5">
-              <label className="text-foreground-muted text-sm font-medium">Privacy radius</label>
-              <select value={radius} onChange={(e) => setRadius(Number(e.target.value))} className="admin-input">
-                <option value={100}>100 m</option>
-                <option value={250}>250 m</option>
-                <option value={500}>500 m</option>
-                <option value={1000}>1 km</option>
-                <option value={2000}>2 km</option>
-                <option value={5000}>5 km</option>
+            <Field
+              label="Privacy radius"
+              required
+              error={fieldErrors.privacyRadiusMeters}
+              hint="Never shown to visitors."
+            >
+              <select
+                value={radius}
+                onChange={(event) =>
+                  setRadius(Number(event.target.value) as PrivacyRadiusMeters)
+                }
+                className="admin-input"
+              >
+                {RADIUS_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
-            </div>
+            </Field>
           )}
         </div>
 
-        {/* Marker mode */}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <label className="text-foreground-muted text-sm font-medium">Marker mode</label>
-            <select value={markerMode} onChange={(e) => setMarkerMode(e.target.value)} className="admin-input">
-              <option value="automatic">Automatic — derived from rules</option>
-              <option value="manual">Manual — hand-placed position</option>
-            </select>
+        {visibility !== "hidden" && (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Marker placement" error={fieldErrors.publicMarkerMode}>
+              <select
+                value={markerMode}
+                onChange={(event) =>
+                  setMarkerMode(event.target.value as PublicMarkerMode)
+                }
+                className="admin-input"
+              >
+                <option value="automatic">Automatic — from the rules above</option>
+                <option value="manual">Manual — placed by hand</option>
+              </select>
+            </Field>
+
+            {markerMode === "manual" && (
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Marker latitude" required error={fieldErrors.manualPublicLatitude}>
+                  <input
+                    type="number"
+                    step="any"
+                    value={manualLatitude}
+                    onChange={(event) => setManualLatitude(event.target.value)}
+                    className="admin-input"
+                  />
+                </Field>
+                <Field label="Marker longitude" required error={fieldErrors.manualPublicLongitude}>
+                  <input
+                    type="number"
+                    step="any"
+                    value={manualLongitude}
+                    onChange={(event) => setManualLongitude(event.target.value)}
+                    className="admin-input"
+                  />
+                </Field>
+              </div>
+            )}
           </div>
-          {markerMode === "manual" && (
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1.5">
-                <label className="text-foreground-subtle text-xs">Manual lat</label>
-                <input type="number" step="any" value={manualLat ?? ""} onChange={(e) => setManualLat(e.target.value ? Number(e.target.value) : undefined)} className="admin-input" />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-foreground-subtle text-xs">Manual lng</label>
-                <input type="number" step="any" value={manualLng ?? ""} onChange={(e) => setManualLng(e.target.value ? Number(e.target.value) : undefined)} className="admin-input" />
-              </div>
-            </div>
-          )}
-        </div>
+        )}
 
-        {/* Address visibility */}
-        <div className="space-y-2">
-          <label className="text-foreground-muted text-sm font-medium">Address visibility</label>
+        <fieldset className="space-y-2">
+          <legend className="text-foreground-muted text-sm font-medium">
+            Address shown publicly
+          </legend>
           <div className="flex flex-wrap gap-4">
-            <ToggleSmall label="House number" checked={showHouseNumber} onChange={setShowHouseNumber} />
-            <ToggleSmall label="Street" checked={showStreet} onChange={setShowStreet} />
-            <ToggleSmall label="Suburb" checked={showSuburb} onChange={setShowSuburb} />
-            <ToggleSmall label="Postcode" checked={showPostcode} onChange={setShowPostcode} />
+            <Checkbox
+              label="House number"
+              checked={showHouseNumber}
+              onChange={setShowHouseNumber}
+            />
+            <Checkbox label="Street" checked={showStreet} onChange={setShowStreet} />
+            <Checkbox label="Suburb" checked={showSuburb} onChange={setShowSuburb} />
+            <Checkbox
+              label="Postcode"
+              checked={showPostcode}
+              onChange={setShowPostcode}
+            />
           </div>
-        </div>
+          <p className="text-foreground-subtle text-xs">
+            A house number is never published without its street.
+          </p>
+        </fieldset>
 
-        {/* Directions */}
-        <div className="space-y-1.5">
-          <label className="text-foreground-muted text-sm font-medium">Directions</label>
+        <Field
+          label="Directions"
+          hint="Default allows directions only for an exact marker."
+        >
           <select
             value={allowDirections === undefined ? "default" : String(allowDirections)}
-            onChange={(e) => {
-              const val = e.target.value;
-              setAllowDirections(val === "default" ? undefined : val === "true");
+            onChange={(event) => {
+              const next = event.target.value;
+              setAllowDirections(next === "default" ? undefined : next === "true");
             }}
             className="admin-input"
           >
-            <option value="default">Default for visibility</option>
-            <option value="true">Always allow</option>
-            <option value="false">Never allow</option>
+            <option value="default">Use the default for this precision</option>
+            <option value="true">Always offer directions</option>
+            <option value="false">Never offer directions</option>
           </select>
-        </div>
-      </div>
+        </Field>
+      </section>
 
-      {/* Save button */}
       <button
+        type="button"
         onClick={handleSave}
         disabled={isPending}
         className="bg-accent hover:bg-accent-strong text-foreground-inverse rounded-lg px-4 py-2.5 text-sm font-medium transition-colors disabled:opacity-60"
       >
-        {isPending ? "Saving..." : "Save location & regenerate projection"}
+        {isPending ? "Saving…" : "Save location"}
       </button>
-    </div>
-  );
-}
 
-function ToggleSmall({
-  label,
-  checked,
-  onChange,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (value: boolean) => void;
-}) {
-  return (
-    <label className="flex cursor-pointer items-center gap-2">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="text-accent border-border h-4 w-4 rounded bg-transparent"
-      />
-      <span className="text-foreground-muted text-sm">{label}</span>
-    </label>
+      <p className="text-foreground-subtle text-xs">
+        Saving rewrites the published marker in a single transaction — the
+        stored position and what visitors see can never disagree.
+      </p>
+    </div>
   );
 }

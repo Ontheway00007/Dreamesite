@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -10,10 +10,19 @@ import {
   publishPropertyAction,
   unpublishPropertyAction,
   duplicatePropertyAction,
+  type PropertyActionResult,
   type PropertyFormData,
 } from "@/lib/admin/actions/property-actions";
-import type { PropertiesRow, PropertyLocationSettingsRow, PropertyPrivateLocationsRow } from "@/types/database";
+import { slugify } from "@/lib/admin/validation/property";
+import type { FieldError } from "@/lib/admin/validation/result";
+import type {
+  PropertiesRow,
+  PropertyLocationSettingsRow,
+  PropertyPrivateLocationsRow,
+} from "@/types/database";
 import { LocationEditor } from "@/components/admin/location-editor";
+import { AdminAlert } from "@/components/admin/admin-alert";
+import { Field, Toggle } from "@/components/admin/form-controls";
 
 interface Props {
   mode: "create" | "edit";
@@ -21,14 +30,23 @@ interface Props {
   initialData?: PropertiesRow;
   privateLocation?: PropertyPrivateLocationsRow | null;
   locationSettings?: PropertyLocationSettingsRow | null;
+  /** Reasons this property cannot be published, from the database. */
+  publishBlockers?: readonly string[];
 }
 
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .substring(0, 100);
+type TabId = "details" | "location" | "media";
+
+/** Maps field errors to a lookup the inputs can read. */
+function toFieldMap(errors: readonly FieldError[] | undefined) {
+  if (!errors) return {};
+
+  return errors.reduce<Record<string, string>>((map, error) => {
+    // First message per field wins — showing two under one input is noise.
+    if (!map[error.field]) {
+      map[error.field] = error.message;
+    }
+    return map;
+  }, {});
 }
 
 export function PropertyEditor({
@@ -37,32 +55,91 @@ export function PropertyEditor({
   initialData,
   privateLocation,
   locationSettings,
+  publishBlockers = [],
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [activeTab, setActiveTab] = useState<TabId>("details");
+
+  // Feedback state
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"details" | "location" | "media">("details");
+  const [notice, setNotice] = useState<string | null>(null);
+  const [blockers, setBlockers] = useState<readonly string[]>([]);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   // Form state
   const [name, setName] = useState(initialData?.name ?? "");
   const [slug, setSlug] = useState(initialData?.slug ?? "");
+  const [slugLocked, setSlugLocked] = useState(mode === "edit");
   const [summary, setSummary] = useState(initialData?.summary ?? "");
-  const [status, setStatus] = useState<string>(initialData?.status ?? "under-construction");
+  const [status, setStatus] = useState<string>(
+    initialData?.status ?? "under-construction",
+  );
   const [suburb, setSuburb] = useState(initialData?.suburb ?? "");
   const [state, setState] = useState(initialData?.state ?? "VIC");
   const [bedrooms, setBedrooms] = useState(initialData?.bedrooms ?? 3);
   const [bathrooms, setBathrooms] = useState(initialData?.bathrooms ?? 2);
   const [carSpaces, setCarSpaces] = useState(initialData?.car_spaces ?? 2);
   const [landSize, setLandSize] = useState(initialData?.land_size_sqm ?? 0);
-  const [houseSize, setHouseSize] = useState(initialData?.house_size_sqm ?? undefined);
-  const [priceDisplay, setPriceDisplay] = useState(initialData?.price_display ?? "");
-  const [completionLabel, setCompletionLabel] = useState(initialData?.completion_label ?? "");
+  const [houseSize, setHouseSize] = useState<number | undefined>(
+    initialData?.house_size_sqm ?? undefined,
+  );
+  const [priceDisplay, setPriceDisplay] = useState(
+    initialData?.price_display ?? "",
+  );
+  const [completionLabel, setCompletionLabel] = useState(
+    initialData?.completion_label ?? "",
+  );
   const [isFeatured, setIsFeatured] = useState(initialData?.is_featured ?? false);
-  const [isPublished, setIsPublished] = useState(initialData?.is_published ?? false);
-  const [displayPriority, setDisplayPriority] = useState(initialData?.display_priority ?? 0);
-  const [displayIsHome, setDisplayIsHome] = useState(initialData?.display_is_home ?? false);
-  const [displayOpeningNote, setDisplayOpeningNote] = useState(initialData?.display_opening_note ?? "");
-  const [currentStageId, setCurrentStageId] = useState(initialData?.current_stage_id ?? "");
+  const [isPublished, setIsPublished] = useState(
+    initialData?.is_published ?? false,
+  );
+  const [displayPriority, setDisplayPriority] = useState(
+    initialData?.display_priority ?? 0,
+  );
+  const [displayIsHome, setDisplayIsHome] = useState(
+    initialData?.display_is_home ?? false,
+  );
+  const [displayOpeningNote, setDisplayOpeningNote] = useState(
+    initialData?.display_opening_note ?? "",
+  );
+  const [currentStageId, setCurrentStageId] = useState(
+    initialData?.current_stage_id ?? "",
+  );
+
+  /** Location is configured once settings exist for this property. */
+  const hasLocation = locationSettings !== null && locationSettings !== undefined;
+
+  // Blockers reported on load, until an action supersedes them.
+  const activeBlockers = useMemo(
+    () => (blockers.length > 0 ? blockers : publishBlockers),
+    [blockers, publishBlockers],
+  );
+
+  function clearFeedback() {
+    setError(null);
+    setNotice(null);
+    setBlockers([]);
+    setFieldErrors({});
+  }
+
+  function applyResult(result: PropertyActionResult): boolean {
+    if (result.success) {
+      return true;
+    }
+
+    setError(result.error ?? "Something went wrong.");
+    setFieldErrors(toFieldMap(result.fieldErrors));
+    setBlockers(result.blockers ?? []);
+
+    // Field errors always live on the Details tab, so send the
+    // administrator to where the problem actually is.
+    if (result.fieldErrors && result.fieldErrors.length > 0) {
+      setActiveTab("details");
+    }
+
+    return false;
+  }
 
   function collectFormData(): PropertyFormData {
     return {
@@ -76,7 +153,7 @@ export function PropertyEditor({
       bathrooms,
       carSpaces,
       landSizeSqm: landSize,
-      houseSizeSqm: houseSize ?? undefined,
+      houseSizeSqm: houseSize,
       priceDisplay: priceDisplay || undefined,
       completionLabel: completionLabel || undefined,
       isFeatured,
@@ -89,93 +166,150 @@ export function PropertyEditor({
   }
 
   function handleSave() {
-    setError(null);
+    clearFeedback();
+
     startTransition(async () => {
-      const formData = collectFormData();
+      const payload = collectFormData();
       const result =
         mode === "create"
-          ? await createPropertyAction(formData)
-          : await updatePropertyAction(propertyId!, formData);
+          ? await createPropertyAction(payload)
+          : await updatePropertyAction(propertyId as string, payload);
 
-      if (!result.success) {
-        setError(result.error ?? "An error occurred.");
-      } else if (mode === "create" && result.id) {
+      if (!applyResult(result)) {
+        return;
+      }
+
+      if (mode === "create" && result.id) {
         router.push(`/admin/properties/${result.id}`);
+      } else {
+        setNotice("Changes saved.");
+        router.refresh();
       }
     });
   }
 
   function handleDelete() {
     if (!propertyId) return;
-    if (!confirm("Are you sure you want to delete this property? This cannot be undone.")) return;
+
+    const confirmed = window.confirm(
+      `Delete "${name}"? This also removes its location, images and documents. This cannot be undone.`,
+    );
+
+    if (!confirmed) return;
+
+    clearFeedback();
 
     startTransition(async () => {
       const result = await deletePropertyAction(propertyId);
-      if (result.success) {
+
+      if (applyResult(result)) {
         router.push("/admin/properties");
-      } else {
-        setError(result.error ?? "Failed to delete.");
       }
     });
   }
 
   function handlePublishToggle() {
     if (!propertyId) return;
+    clearFeedback();
+
     startTransition(async () => {
       const result = isPublished
         ? await unpublishPropertyAction(propertyId)
         : await publishPropertyAction(propertyId);
-      if (result.success) {
-        setIsPublished(!isPublished);
-      } else {
-        setError(result.error ?? "Failed to update publish status.");
+
+      if (!applyResult(result)) {
+        return;
       }
+
+      const nowPublished = !isPublished;
+      setIsPublished(nowPublished);
+      setNotice(
+        nowPublished
+          ? "Published. It is now visible on the public site."
+          : "Unpublished. It is no longer visible to visitors.",
+      );
+      router.refresh();
     });
   }
 
   function handleDuplicate() {
     if (!propertyId) return;
+    clearFeedback();
+
     startTransition(async () => {
       const result = await duplicatePropertyAction(propertyId);
-      if (result.success && result.id) {
+
+      if (applyResult(result) && result.id) {
         router.push(`/admin/properties/${result.id}`);
-      } else {
-        setError(result.error ?? "Failed to duplicate.");
       }
     });
   }
 
-  const tabs = [
-    { id: "details" as const, label: "Details" },
-    { id: "location" as const, label: "Location & Privacy" },
-    { id: "media" as const, label: "Media" },
+  const tabs: ReadonlyArray<{ id: TabId; label: string; badge?: string }> = [
+    { id: "details", label: "Details" },
+    {
+      id: "location",
+      label: "Location & privacy",
+      badge: hasLocation ? undefined : "Not set",
+    },
+    { id: "media", label: "Media" },
   ];
 
   return (
     <div className="space-y-6">
-      {/* Error banner */}
       {error && (
-        <div className="bg-red-500/10 border-red-500/20 rounded-lg border px-4 py-3 text-sm text-red-400">
-          {error}
-        </div>
+        <AdminAlert tone="error" title={error}>
+          {activeBlockers.length > 0 && (
+            <ul className="mt-2 list-inside list-disc space-y-1">
+              {activeBlockers.map((blocker) => (
+                <li key={blocker}>{blocker}</li>
+              ))}
+            </ul>
+          )}
+        </AdminAlert>
+      )}
+
+      {notice && <AdminAlert tone="success" title={notice} />}
+
+      {/* Readiness shown before the administrator tries to publish, so the
+          Publish button is never a surprise. */}
+      {!error && !isPublished && activeBlockers.length > 0 && (
+        <AdminAlert tone="info" title="Not ready to publish yet">
+          <ul className="mt-2 list-inside list-disc space-y-1">
+            {activeBlockers.map((blocker) => (
+              <li key={blocker}>{blocker}</li>
+            ))}
+          </ul>
+        </AdminAlert>
       )}
 
       {/* Action bar */}
       <div className="flex flex-wrap items-center gap-3">
         <button
+          type="button"
           onClick={handleSave}
           disabled={isPending}
           className="bg-accent hover:bg-accent-strong text-foreground-inverse rounded-lg px-4 py-2.5 text-sm font-medium transition-colors disabled:opacity-60"
         >
-          {isPending ? "Saving..." : mode === "create" ? "Create property" : "Save changes"}
+          {isPending
+            ? "Working…"
+            : mode === "create"
+              ? "Create property"
+              : "Save changes"}
         </button>
 
         {mode === "edit" && (
           <>
             <button
+              type="button"
               onClick={handlePublishToggle}
-              disabled={isPending}
-              className={`rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors disabled:opacity-60 ${
+              disabled={isPending || (!isPublished && activeBlockers.length > 0)}
+              title={
+                !isPublished && activeBlockers.length > 0
+                  ? "Complete the outstanding items before publishing."
+                  : undefined
+              }
+              className={`rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors disabled:opacity-40 ${
                 isPublished
                   ? "border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
                   : "border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
@@ -185,17 +319,20 @@ export function PropertyEditor({
             </button>
 
             <button
+              type="button"
               onClick={handleDuplicate}
               disabled={isPending}
+              title="Copies the details only. Location, images and documents are not copied."
               className="border-border text-foreground-muted hover:bg-surface-raised rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors disabled:opacity-60"
             >
               Duplicate
             </button>
 
             <button
+              type="button"
               onClick={handleDelete}
               disabled={isPending}
-              className="border-red-500/30 text-red-400 hover:bg-red-500/10 ml-auto rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors disabled:opacity-60"
+              className="ml-auto rounded-lg border border-red-500/30 px-4 py-2.5 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/10 disabled:opacity-60"
             >
               Delete
             </button>
@@ -204,69 +341,96 @@ export function PropertyEditor({
       </div>
 
       {/* Tabs */}
-      <div className="border-border flex gap-1 border-b">
+      <div className="border-border flex gap-1 border-b" role="tablist">
         {tabs.map((tab) => (
           <button
             key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+            className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
               activeTab === tab.id
                 ? "border-accent text-accent"
-                : "border-transparent text-foreground-muted hover:text-foreground"
+                : "text-foreground-muted hover:text-foreground border-transparent"
             }`}
           >
             {tab.label}
+            {tab.badge && (
+              <span className="rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium uppercase text-amber-400">
+                {tab.badge}
+              </span>
+            )}
           </button>
         ))}
       </div>
 
-      {/* Tab content */}
+      {/* Details */}
       {activeTab === "details" && (
         <div className="bg-surface border-border space-y-6 rounded-xl border p-6">
-          {/* Name + Slug */}
           <div className="grid gap-6 sm:grid-cols-2">
-            <Field label="Name" required>
+            <Field label="Name" required error={fieldErrors.name}>
               <input
                 type="text"
                 value={name}
-                onChange={(e) => {
-                  setName(e.target.value);
-                  if (mode === "create" && !slug) {
-                    setSlug(slugify(e.target.value));
+                onChange={(event) => {
+                  const next = event.target.value;
+                  setName(next);
+                  // Only auto-fill the slug while the administrator has not
+                  // taken control of it. Silently rewriting a chosen slug
+                  // would change a live URL.
+                  if (!slugLocked) {
+                    setSlug(slugify(next));
                   }
                 }}
                 className="admin-input"
                 placeholder="Single storey concept"
               />
             </Field>
-            <Field label="Slug" required hint="URL-safe identifier">
+
+            <Field
+              label="Slug"
+              required
+              error={fieldErrors.slug}
+              hint={
+                mode === "edit"
+                  ? "Changing this changes the public URL."
+                  : "Fills in from the name until you edit it."
+              }
+            >
               <input
                 type="text"
                 value={slug}
-                onChange={(e) => setSlug(slugify(e.target.value))}
+                onChange={(event) => {
+                  setSlugLocked(true);
+                  setSlug(slugify(event.target.value));
+                }}
                 className="admin-input"
                 placeholder="single-storey-concept"
               />
             </Field>
           </div>
 
-          {/* Summary */}
-          <Field label="Summary" required hint="One sentence for cards and listings">
+          <Field
+            label="Summary"
+            required
+            error={fieldErrors.summary}
+            hint="One sentence, shown on cards and listings."
+          >
             <textarea
               value={summary}
-              onChange={(e) => setSummary(e.target.value)}
+              onChange={(event) => setSummary(event.target.value)}
               rows={2}
               className="admin-input resize-none"
               placeholder="Single level, north-facing living, courtyard to the rear boundary."
             />
           </Field>
 
-          {/* Status + Suburb + State */}
           <div className="grid gap-6 sm:grid-cols-3">
-            <Field label="Status" required>
+            <Field label="Status" required error={fieldErrors.status}>
               <select
                 value={status}
-                onChange={(e) => setStatus(e.target.value)}
+                onChange={(event) => setStatus(event.target.value)}
                 className="admin-input"
               >
                 <option value="move-in-ready">Move-in ready</option>
@@ -275,156 +439,204 @@ export function PropertyEditor({
                 <option value="sold">Sold</option>
               </select>
             </Field>
-            <Field label="Suburb" required>
+
+            <Field label="Suburb" required error={fieldErrors.suburb}>
               <input
                 type="text"
                 value={suburb}
-                onChange={(e) => setSuburb(e.target.value)}
+                onChange={(event) => setSuburb(event.target.value)}
                 className="admin-input"
                 placeholder="Mickleham"
               />
             </Field>
-            <Field label="State">
+
+            <Field label="State" required error={fieldErrors.state}>
               <input
                 type="text"
                 value={state}
-                onChange={(e) => setState(e.target.value)}
+                onChange={(event) => setState(event.target.value)}
                 className="admin-input"
                 placeholder="VIC"
               />
             </Field>
           </div>
 
-          {/* Measurements */}
           <div className="grid gap-6 sm:grid-cols-5">
-            <Field label="Bedrooms">
-              <input type="number" min={0} max={20} value={bedrooms} onChange={(e) => setBedrooms(Number(e.target.value))} className="admin-input" />
+            <Field label="Bedrooms" error={fieldErrors.bedrooms}>
+              <input
+                type="number"
+                min={0}
+                max={20}
+                value={bedrooms}
+                onChange={(event) => setBedrooms(Number(event.target.value))}
+                className="admin-input"
+              />
             </Field>
-            <Field label="Bathrooms">
-              <input type="number" min={0} max={20} value={bathrooms} onChange={(e) => setBathrooms(Number(e.target.value))} className="admin-input" />
+            <Field label="Bathrooms" error={fieldErrors.bathrooms}>
+              <input
+                type="number"
+                min={0}
+                max={20}
+                value={bathrooms}
+                onChange={(event) => setBathrooms(Number(event.target.value))}
+                className="admin-input"
+              />
             </Field>
-            <Field label="Car spaces">
-              <input type="number" min={0} max={10} value={carSpaces} onChange={(e) => setCarSpaces(Number(e.target.value))} className="admin-input" />
+            <Field label="Car spaces" error={fieldErrors.carSpaces}>
+              <input
+                type="number"
+                min={0}
+                max={10}
+                value={carSpaces}
+                onChange={(event) => setCarSpaces(Number(event.target.value))}
+                className="admin-input"
+              />
             </Field>
-            <Field label="Land (sqm)">
-              <input type="number" min={0} value={landSize} onChange={(e) => setLandSize(Number(e.target.value))} className="admin-input" />
+            <Field label="Land m²" error={fieldErrors.landSizeSqm}>
+              <input
+                type="number"
+                min={0}
+                value={landSize}
+                onChange={(event) => setLandSize(Number(event.target.value))}
+                className="admin-input"
+              />
             </Field>
-            <Field label="House (sqm)">
-              <input type="number" min={0} value={houseSize ?? ""} onChange={(e) => setHouseSize(e.target.value ? Number(e.target.value) : undefined)} className="admin-input" />
+            <Field label="House m²" error={fieldErrors.houseSizeSqm}>
+              <input
+                type="number"
+                min={0}
+                value={houseSize ?? ""}
+                onChange={(event) =>
+                  setHouseSize(
+                    event.target.value === ""
+                      ? undefined
+                      : Number(event.target.value),
+                  )
+                }
+                className="admin-input"
+              />
             </Field>
           </div>
 
-          {/* Price + Completion */}
           <div className="grid gap-6 sm:grid-cols-2">
-            <Field label="Price display" hint="Shown to visitors, e.g. 'Price on application'">
-              <input type="text" value={priceDisplay} onChange={(e) => setPriceDisplay(e.target.value)} className="admin-input" placeholder="Price on application" />
+            <Field
+              label="Price display"
+              error={fieldErrors.priceDisplay}
+              hint="Only what the business has confirmed. Leave blank to show nothing."
+            >
+              <input
+                type="text"
+                value={priceDisplay}
+                onChange={(event) => setPriceDisplay(event.target.value)}
+                className="admin-input"
+                placeholder="Price on application"
+              />
             </Field>
-            <Field label="Completion label" hint="e.g. 'Completion window Q4 2026'">
-              <input type="text" value={completionLabel} onChange={(e) => setCompletionLabel(e.target.value)} className="admin-input" />
+            <Field
+              label="Completion label"
+              error={fieldErrors.completionLabel}
+              hint="Plain language, e.g. “Completion window to be confirmed”."
+            >
+              <input
+                type="text"
+                value={completionLabel}
+                onChange={(event) => setCompletionLabel(event.target.value)}
+                className="admin-input"
+              />
             </Field>
           </div>
 
-          {/* Display options */}
           <div className="grid gap-6 sm:grid-cols-3">
-            <Field label="Display priority" hint="Lower numbers appear first">
-              <input type="number" min={0} value={displayPriority} onChange={(e) => setDisplayPriority(Number(e.target.value))} className="admin-input" />
+            <Field
+              label="Display priority"
+              error={fieldErrors.displayPriority}
+              hint="Lower numbers appear first."
+            >
+              <input
+                type="number"
+                min={0}
+                value={displayPriority}
+                onChange={(event) =>
+                  setDisplayPriority(Number(event.target.value))
+                }
+                className="admin-input"
+              />
             </Field>
-            <Field label="Construction stage" hint="ID from content/process.ts">
-              <select value={currentStageId} onChange={(e) => setCurrentStageId(e.target.value)} className="admin-input">
+
+            <Field label="Build stage" hint="Only meaningful while under construction.">
+              <select
+                value={currentStageId}
+                onChange={(event) => setCurrentStageId(event.target.value)}
+                className="admin-input"
+              >
                 <option value="">None</option>
-                <option value="site-design">Site & Design</option>
+                <option value="site-design">Site &amp; design</option>
                 <option value="documentation">Documentation</option>
                 <option value="construction">Construction</option>
                 <option value="handover">Handover</option>
               </select>
             </Field>
-            <Field label="Display home note" hint="Opening hours when property is a display home">
-              <input type="text" value={displayOpeningNote} onChange={(e) => setDisplayOpeningNote(e.target.value)} className="admin-input" placeholder="Open Saturdays 11-2" />
+
+            <Field
+              label="Opening note"
+              error={fieldErrors.displayOpeningNote}
+              hint="Shown only when this is a display home."
+            >
+              <input
+                type="text"
+                value={displayOpeningNote}
+                onChange={(event) => setDisplayOpeningNote(event.target.value)}
+                className="admin-input"
+                placeholder="Open Saturdays 11–2"
+              />
             </Field>
           </div>
 
-          {/* Toggles */}
-          <div className="flex flex-wrap gap-6">
-            <Toggle label="Featured on homepage" checked={isFeatured} onChange={setIsFeatured} />
-            <Toggle label="Display home" checked={displayIsHome} onChange={setDisplayIsHome} />
-            <Toggle label="Published" checked={isPublished} onChange={setIsPublished} />
+          <div className="border-border flex flex-wrap gap-6 border-t pt-6">
+            <Toggle
+              label="Featured on homepage"
+              checked={isFeatured}
+              onChange={setIsFeatured}
+            />
+            <Toggle
+              label="Display home"
+              checked={displayIsHome}
+              onChange={setDisplayIsHome}
+            />
           </div>
+
+          <p className="text-foreground-subtle text-xs">
+            Publishing is handled by the Publish button above, so a record is
+            never made public by a checkbox on a form.
+          </p>
         </div>
       )}
 
+      {/* Location */}
       {activeTab === "location" && (
         <LocationEditor
           propertyId={propertyId}
           privateLocation={privateLocation ?? undefined}
           locationSettings={locationSettings ?? undefined}
+          onSaved={() => {
+            // Saving a location can clear a publish blocker, so refresh the
+            // server data that produced the warning above.
+            setBlockers([]);
+            router.refresh();
+          }}
         />
       )}
 
+      {/* Media */}
       {activeTab === "media" && (
         <div className="bg-surface border-border rounded-xl border p-6">
           <p className="text-foreground-muted text-sm">
-            Media management is available once the property is saved.
-            {mode === "create" && " Create the property first, then manage media from the edit page."}
+            {mode === "create"
+              ? "Create the property first — media is attached to a saved record."
+              : "Media management arrives in the next phase. Uploads, ordering and deletion are already permitted for administrators at the storage layer."}
           </p>
         </div>
       )}
     </div>
-  );
-}
-
-/* --- Shared field components --- */
-
-function Field({
-  label,
-  required,
-  hint,
-  children,
-}: {
-  label: string;
-  required?: boolean;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <label className="text-foreground-muted block text-sm font-medium">
-        {label}
-        {required && <span className="text-accent ml-1">*</span>}
-      </label>
-      {children}
-      {hint && <p className="text-foreground-subtle text-xs">{hint}</p>}
-    </div>
-  );
-}
-
-function Toggle({
-  label,
-  checked,
-  onChange,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (value: boolean) => void;
-}) {
-  return (
-    <label className="flex cursor-pointer items-center gap-2.5">
-      <div
-        role="switch"
-        aria-checked={checked}
-        onClick={() => onChange(!checked)}
-        onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); onChange(!checked); } }}
-        tabIndex={0}
-        className={`relative h-5 w-9 rounded-full transition-colors ${
-          checked ? "bg-accent" : "bg-zinc-700"
-        }`}
-      >
-        <div
-          className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
-            checked ? "translate-x-4" : "translate-x-0.5"
-          }`}
-        />
-      </div>
-      <span className="text-foreground-muted text-sm">{label}</span>
-    </label>
   );
 }
