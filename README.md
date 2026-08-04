@@ -44,8 +44,11 @@ deployments.
 | `NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN` | for the map  | account.mapbox.com → Tokens → public token (`pk.…`)      |
 | `NEXT_PUBLIC_MAPBOX_STYLE`        | optional     | A Mapbox Studio style URL. Defaults to `mapbox://styles/mapbox/dark-v11` |
 | `NEXT_PUBLIC_SITE_URL`            | recommended  | Your canonical origin, e.g. `https://dreame.com.au`      |
+| `SUPABASE_SERVICE_ROLE_KEY`       | for admin    | Supabase → Project Settings → API Keys → service_role     |
+| `DEPLOYMENT_ENV`                  | non-Vercel   | Set to `production` on non-Vercel hosts                   |
 
 The anon key is designed to be public — RLS is what limits what it can see.
+The service role key is server-only and must NEVER be exposed in browser code.
 Restrict the Mapbox token to your domains before launch.
 
 ## Data sources
@@ -92,10 +95,68 @@ records. Never edit an applied migration — add a new one.
 ## Storage
 
 A public bucket `property-media` is created by migration `0004`. Files follow
-`properties/<property-id>/<kind>/<uuid>.<ext>` and anonymous uploads are
-denied: only `SELECT` policies exist for `anon`/`authenticated` until admin
-uploads arrive in Phase 6. Architectural placeholders are not moved into the
-bucket — they remain drawn locally.
+`properties/<property-id>/<kind>/<uuid>.<ext>`. Anonymous uploads are
+denied. Authenticated administrators can upload, update, and delete files via
+RLS policies in migration `0007`. Architectural placeholders are not moved
+into the bucket — they remain drawn locally.
+
+## Authentication & Admin
+
+The admin system lives at `/admin` and uses Supabase Auth with email/password.
+
+### Architecture
+
+- **No public registration** — administrators are provisioned via the
+  `admin_users` table in the Supabase dashboard.
+- **Authorization is server-side only** — the `admin_users` table is queried on
+  every request via `requireAdmin()`. JWT claims and `user_metadata` are never
+  trusted for authorization.
+- **Middleware** refreshes the auth session cookie on every `/admin/*` request.
+- **RLS policies** use a `public.is_admin()` helper function (SECURITY DEFINER)
+  to gate all write operations.
+- **Audit logging** records admin actions (create, update, publish, delete) in
+  an append-only `audit_log` table.
+
+### Setting up the first administrator
+
+1. Create a user in the Supabase Auth dashboard (Authentication → Users → Add user)
+2. Insert a row into `admin_users`:
+   ```sql
+   INSERT INTO public.admin_users (user_id, email, role)
+   VALUES ('<auth-user-uuid>', 'admin@example.com', 'super_admin');
+   ```
+3. Visit `/admin/login` and sign in with those credentials.
+
+### Admin routes
+
+| Route                     | Purpose                                 |
+| ------------------------- | --------------------------------------- |
+| `/admin/login`            | Email/password login                    |
+| `/admin/unauthorized`     | Shown when user is not an admin         |
+| `/admin`                  | Dashboard overview                      |
+| `/admin/properties`       | Property listing with sort/filter/search |
+| `/admin/properties/new`   | Create a new property                   |
+| `/admin/properties/[id]`  | Edit an existing property               |
+| `/admin/enquiries`        | Enquiry management (placeholder)        |
+| `/admin/media`            | Media library info                      |
+| `/admin/settings`         | Settings (placeholder)                  |
+
+### Roles
+
+| Role          | Permissions                                      |
+| ------------- | ------------------------------------------------ |
+| `admin`       | Full CRUD on properties, media, enquiries        |
+| `super_admin` | Above + manage other administrators              |
+
+### Security guarantees
+
+- Private coordinates and privacy settings are never exposed to the browser
+  in public routes (enforced by RLS + the privacy pipeline).
+- Admin routes are gated by `requireAdmin()` in every Server Component and
+  Server Action — there is no client-only auth check.
+- The service-role key is used ONLY for the projection regeneration service
+  (`generate-public-locations.ts`). All admin CRUD uses the authenticated
+  client with RLS.
 
 ## Caching
 

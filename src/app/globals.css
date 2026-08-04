@@ -353,3 +353,12 @@
     background-size: 3px 3px;
   }
 }
+
+
+/* ==========================================================================
+   Admin form utilities
+   ========================================================================== */
+
+.admin-input {
+  @apply bg-surface border-border text-foreground placeholder:text-foreground-subtle focus:border-accent focus:ring-accent/20 block w-full rounded-lg border px-3 py-2 text-sm outline-none transition-colors focus:ring-2;
+}

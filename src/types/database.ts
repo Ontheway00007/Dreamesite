@@ -201,6 +201,27 @@ export interface PropertyJoinedRow extends PropertiesRow {
   property_testimonials: PropertyTestimonialsRow[] | null;
 }
 
+export interface AdminUsersRow {
+  id: string;
+  user_id: string;
+  email: string;
+  display_name: string | null;
+  role: "admin" | "super_admin";
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AuditLogRow {
+  id: string;
+  user_id: string | null;
+  action: "created" | "updated" | "published" | "unpublished" | "deleted" | "archived";
+  entity_type: string;
+  entity_id: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -270,9 +291,26 @@ export interface Database {
         Update: Partial<EnquiriesRow>;
         Relationships: [];
       };
+      admin_users: {
+        Row: AdminUsersRow;
+        Insert: Partial<AdminUsersRow>;
+        Update: Partial<AdminUsersRow>;
+        Relationships: [];
+      };
+      audit_log: {
+        Row: AuditLogRow;
+        Insert: Partial<AuditLogRow>;
+        Update: Partial<AuditLogRow>;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      is_admin: {
+        Args: Record<string, never>;
+        Returns: boolean;
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };
