@@ -31,6 +31,32 @@ import type { PropertySource } from "@/lib/properties/source";
  *
  * No description body, no resources, no testimonials.
  */
+/**
+ * The `property_images` embed, disambiguated by foreign key.
+ *
+ * There are **two** foreign keys between `properties` and `property_images`:
+ *
+ *   property_images_property_id_fkey   property_images.property_id -> properties.id
+ *   properties_seo_og_image_id_fkey    properties.seo_og_image_id -> property_images.id
+ *
+ * The second was added by migration 0010 for the per-property social-preview
+ * override. From that moment a bare `property_images (...)` embed became
+ * ambiguous, and PostgREST refuses to guess: it answers **HTTP 300** with
+ * `PGRST201` instead of returning rows. Every public read that embeds images —
+ * the listing, the homepage and the detail page — returned nothing, so a
+ * correctly published property was invisible and its page 404ed.
+ *
+ * The `!constraint` suffix is a *hint*, not an alias: the response key stays
+ * `property_images`, which is what keeps the contract with `mapPropertyRow`
+ * intact. That distinction matters — see the note on DETAIL_SELECT below about
+ * aliasing having silently broken these lookups once before.
+ *
+ * Nothing local could have caught this. The SQL harness never speaks PostgREST,
+ * the unit tests mock the client, and development runs on fixtures. It appeared
+ * the first time a real project held a real property.
+ */
+const PROPERTY_IMAGES_EMBED = "property_images!property_images_property_id_fkey";
+
 const SUMMARY_SELECT = `
   id, slug, name, summary, status, suburb, state,
   bedrooms, bathrooms, car_spaces, land_size_sqm, house_size_sqm,
@@ -42,7 +68,7 @@ const SUMMARY_SELECT = `
     public_address, marker_mode, location_label, accuracy_note,
     allow_directions
   ),
-  property_images (id, image_type, storage_path, external_url, alt_text, is_published)
+  ${PROPERTY_IMAGES_EMBED} (id, image_type, storage_path, external_url, alt_text, is_published)
 `;
 
 /**
@@ -55,6 +81,11 @@ const SUMMARY_SELECT = `
  * This is an optimisation, not a correctness control. `mapPropertyRow` locates
  * the hero among whatever rows it receives and ignores the rest, so if this
  * filter were removed the output would be identical, only more expensive.
+ *
+ * Note the asymmetry with `PROPERTY_IMAGES_EMBED`: the *select* needs the
+ * `!constraint` hint to disambiguate, but the *filter* addresses the embedded
+ * resource by its plain name. Writing the hint here instead produces a
+ * `PGRST100` parse failure. Verified against the live API, not assumed.
  */
 const HERO_ONLY_FILTER = { column: "property_images.image_type", value: "hero" } as const;
 
@@ -76,7 +107,7 @@ const HERO_ONLY_FILTER = { column: "property_images.image_type", value: "hero" }
 const DETAIL_SELECT = `
   *,
   property_public_locations (*),
-  property_images (*),
+  ${PROPERTY_IMAGES_EMBED} (*),
   property_resources (*),
   property_testimonials (*),
   construction_updates (*),

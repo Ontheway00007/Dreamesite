@@ -482,6 +482,64 @@ begin
   raise notice 'PASS  direct grants match the RLS model';
 end $$;
 
+-- ======================================================================
+-- PostgREST embedding ambiguity
+-- ======================================================================
+--
+-- Two foreign keys between the same pair of tables make a PostgREST embed
+-- ambiguous. The API then answers HTTP 300 / PGRST201 instead of returning
+-- rows, and every read that embeds the child silently yields nothing.
+--
+-- This is not hypothetical. Migration 0010 added
+-- `properties.seo_og_image_id -> property_images.id` for the social-preview
+-- override, alongside the existing `property_images.property_id ->
+-- properties.id`. From then on `property_images (...)` was ambiguous, so the
+-- listing, the homepage and the property page all returned no data against a
+-- real project — while every local check still passed, because this harness
+-- speaks SQL rather than PostgREST and the unit tests mock the client. It was
+-- found only by querying a live deployment.
+--
+-- The fix is a hint in the select: `property_images!property_images_property_id_fkey`.
+-- The schema cannot tell whether the application has applied it, so this check
+-- does the next best thing: it lists every ambiguous pair and fails on any it
+-- does not already know about. Adding a second foreign key between two tables
+-- is legitimate; doing it without disambiguating the embed is not, and this
+-- forces the decision to be made deliberately.
+--
+-- If this fails, either add the hint in `src/lib/properties/supabase-repository.ts`
+-- and list the pair below, or reconsider the foreign key.
+
+do $$
+declare
+  v_pair text;
+  v_unexpected text[] := array[]::text[];
+begin
+  for v_pair in
+    select least(src.relname, tgt.relname) || ' <-> ' || greatest(src.relname, tgt.relname)
+    from pg_constraint con
+    join pg_class src on src.oid = con.conrelid
+    join pg_class tgt on tgt.oid = con.confrelid
+    join pg_namespace n on n.oid = src.relnamespace
+    where con.contype = 'f'
+      and n.nspname = 'public'
+    group by least(src.relname, tgt.relname), greatest(src.relname, tgt.relname)
+    having count(*) > 1
+  loop
+    -- Known and handled by a hint in the repository's select strings.
+    if v_pair <> 'properties <-> property_images' then
+      v_unexpected := array_append(v_unexpected, v_pair);
+    end if;
+  end loop;
+
+  if array_length(v_unexpected, 1) > 0 then
+    raise exception
+      'CHECK FAILED: ambiguous PostgREST embedding for %. Add a !constraint hint to the select, or the embed will return HTTP 300.',
+      array_to_string(v_unexpected, ', ');
+  end if;
+
+  raise notice 'PASS  every ambiguous foreign-key pair is one the repository disambiguates';
+end $$;
+
 do $$
 begin
   raise notice '';
