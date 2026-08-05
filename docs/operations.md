@@ -88,6 +88,41 @@ that can leak. If you find it set in a deployment, remove it.
 6. Authentication → URL Configuration: set the Site URL to your production origin
    so password-reset links do not point at localhost.
 
+### Verify the grants after creating a project
+
+A hosted Supabase project grants `anon` and `authenticated` **ALL** privileges on
+every new table and function in `public`, via default privileges. Migration `0014`
+revokes what has accumulated and turns that default off, but it is worth
+confirming on any project you did not watch being built:
+
+```sql
+-- Expect: NONE, NONE, and exactly the two pre-authentication functions.
+select
+  (select coalesce(string_agg(table_name||':'||privilege_type, ', '), 'NONE')
+     from information_schema.role_table_grants
+     where table_schema='public' and grantee='anon'
+       and table_name in ('admin_users','audit_log','site_settings',
+                          'property_private_locations','property_location_settings',
+                          'admin_login_attempts')) as anon_on_private_tables,
+  (select coalesce(string_agg(distinct grantee||':'||table_name, ', '), 'NONE')
+     from information_schema.role_table_grants
+     where table_schema='public' and grantee in ('anon','authenticated')
+       and privilege_type='TRUNCATE') as truncate_grants,
+  (select coalesce(string_agg(p.proname, ', ' order by p.proname), 'NONE')
+     from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+     where n.nspname='public'
+       and not exists (select 1 from pg_depend d
+                       where d.objid=p.oid and d.deptype='e')
+       and has_function_privilege('anon', p.oid, 'EXECUTE'))
+     as anon_executable_functions;
+```
+
+TRUNCATE is the one that matters most: it is a table-level privilege that row
+level security does not filter, so a policy cannot save you from it.
+
+`supabase/verify/00_supabase_stubs.sql` now reproduces this default, so the local
+suites and CI fail if a future migration adds a table without revoking.
+
 ### Turn off public sign-ups
 
 Authentication → Sign In / Providers → disable "Allow new users to sign up".
