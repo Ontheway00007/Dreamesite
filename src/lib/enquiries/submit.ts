@@ -24,7 +24,8 @@ import { createSupabaseCatalogClient } from "@/lib/supabase/catalog";
  *    policy would have rejected.
  * 2. **Nothing is written to the audit log.** The audit trail answers "which
  *    administrator did this", and there is no administrator here. It also runs
- *    on the service-role client, which this path must not touch.
+ *    with the administrator's own client, which an anonymous submission does
+ *    not have.
  * 3. **Nothing sensitive is logged.** Server logs record that a submission
  *    failed and why, never the sender's name, address, phone or message.
  *

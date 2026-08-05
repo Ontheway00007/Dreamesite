@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { getAdminUser } from "@/lib/admin/auth";
+import { safeRedirectTarget } from "@/lib/admin/login-security";
 import { LoginForm } from "./login-form";
 
 export const metadata = {
@@ -8,11 +9,20 @@ export const metadata = {
   robots: { index: false, follow: false },
 };
 
-export default async function AdminLoginPage() {
-  // Already authenticated? Go to dashboard.
+interface LoginPageProps {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}
+
+export default async function AdminLoginPage({ searchParams }: LoginPageProps) {
+  const params = await searchParams;
+  const requested = typeof params.next === "string" ? params.next : undefined;
+
+  // Already signed in? Honour the requested destination, validated the same way
+  // the login action validates it.
   const admin = await getAdminUser();
+
   if (admin) {
-    redirect("/admin");
+    redirect(safeRedirectTarget(requested));
   }
 
   return (
@@ -27,7 +37,7 @@ export default async function AdminLoginPage() {
           </p>
         </div>
 
-        <LoginForm />
+        <LoginForm next={requested} />
       </div>
     </div>
   );

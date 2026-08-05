@@ -10,16 +10,21 @@
  * file when a real project exists; keeping this hand-written copy means
  * mapping code is typeable without a running database.
  *
- * ## Audited against the real schema
+ * ## Checked by CI, not by memory
  *
  * Hand-maintained types are only as good as the last person to remember to
- * update them, so in Phase 6.3.1 they were checked rather than trusted:
- * `supabase gen types typescript` was run against a cluster with every
- * migration applied, and the output compared to this file column by column.
+ * update them, so this file is not trusted — it is verified. The `database` job
+ * in `.github/workflows/ci.yml` applies every migration to an empty PostgreSQL,
+ * regenerates types from the result and compares them to this file with
+ * `scripts/compare-database-types.mjs`. A column added to a migration and not
+ * added here fails the build, in either direction, along with any nullability
+ * disagreement or any function declared here that no longer exists.
  *
- * All fourteen tables matched on both column names and nullability, and every
- * function declared here exists with the signature declared. `gen-types.sh` in
- * `supabase/verify/` reproduces that comparison.
+ * At the time of writing all 15 tables, 177 columns, the one view and all 21
+ * declared functions match. Run it locally with:
+ *
+ *   sudo sh supabase/verify/gen-types.sh /tmp/generated.ts
+ *   node scripts/compare-database-types.mjs /tmp/generated.ts src/types/database.ts
  *
  * The generated output was *not* adopted as a replacement, for two reasons.
  * It comes from a cluster whose `auth` and `storage` schemas are the stubs in
@@ -297,6 +302,28 @@ export interface PropertyJoinedRow extends PropertiesRow {
   property_features: PropertyFeaturesRow[] | null;
 }
 
+/**
+ * One recorded login attempt. Mirrors `admin_login_attempts` from 0013.
+ *
+ * Never contains a password, a token or a raw client address.
+ */
+export interface AdminLoginAttemptsRow {
+  id: string;
+  email: string;
+  /** Salted SHA-256 of the client address, or null when no salt is configured. */
+  ip_hash: string | null;
+  succeeded: boolean;
+  reason:
+    | "bad_credentials"
+    | "not_admin"
+    | "inactive_admin"
+    | "throttled"
+    | "captcha_failed"
+    | "service_error"
+    | null;
+  created_at: string;
+}
+
 export interface AdminUsersRow {
   id: string;
   user_id: string;
@@ -393,6 +420,12 @@ export interface Database {
         Update: Partial<AdminUsersRow>;
         Relationships: [];
       };
+      admin_login_attempts: {
+        Row: AdminLoginAttemptsRow;
+        Insert: Partial<AdminLoginAttemptsRow>;
+        Update: Partial<AdminLoginAttemptsRow>;
+        Relationships: [];
+      };
       audit_log: {
         Row: AuditLogRow;
         Insert: Partial<AuditLogRow>;
@@ -414,6 +447,31 @@ export interface Database {
       };
     };
     Functions: {
+      /** Records one login attempt. Callable by anon. Added by 0013. */
+      record_login_attempt: {
+        Args: {
+          p_email: string;
+          p_ip_hash: string | null;
+          p_succeeded: boolean;
+          p_reason: string | null;
+        };
+        Returns: void;
+      };
+      /** Whether a login attempt may proceed. Added by 0013. */
+      check_login_throttle: {
+        Args: { p_email: string; p_ip_hash: string | null };
+        Returns: Array<{
+          allowed: boolean;
+          requires_captcha: boolean;
+          retry_after_seconds: number;
+          recent_failures: number;
+        }>;
+      };
+      /** Deletes old login attempts. Administrator-only. Added by 0013. */
+      purge_login_attempts: {
+        Args: { p_older_than_days: number };
+        Returns: number;
+      };
       is_admin: {
         Args: Record<string, never>;
         Returns: boolean;

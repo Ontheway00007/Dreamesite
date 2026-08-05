@@ -44,12 +44,34 @@ deployments.
 | `NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN` | for the map  | account.mapbox.com → Tokens → public token (`pk.…`)      |
 | `NEXT_PUBLIC_MAPBOX_STYLE`        | optional     | A Mapbox Studio style URL. Defaults to `mapbox://styles/mapbox/dark-v11` |
 | `NEXT_PUBLIC_SITE_URL`            | recommended  | Your canonical origin, e.g. `https://dreame.com.au`      |
-| `SUPABASE_SERVICE_ROLE_KEY`       | for admin    | Supabase → Project Settings → API Keys → service_role     |
+| `LOGIN_HASH_SALT`                 | production   | Any long random string — `openssl rand -hex 32`           |
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY`  | production   | Cloudflare → Turnstile → your site → site key            |
+| `TURNSTILE_SECRET_KEY`            | production   | Cloudflare → Turnstile → your site → secret key          |
+| `CSP_REPORT_ONLY`                 | optional     | `true` to stage the CSP before enforcing it              |
 | `DEPLOYMENT_ENV`                  | non-Vercel   | Set to `production` on non-Vercel hosts                   |
 
 The anon key is designed to be public — RLS is what limits what it can see.
-The service role key is server-only and must NEVER be exposed in browser code.
 Restrict the Mapbox token to your domains before launch.
+
+The three "production" rows above are not required to run the site, and the
+consequence of omitting each is specific rather than general:
+
+- Without `LOGIN_HASH_SALT`, per-address login throttling is **skipped**.
+  Per-email throttling still applies. The code returns null rather than storing an
+  unsalted hash, because an unsalted hash of an IPv4 address is reversible in
+  seconds.
+- Without the two Turnstile keys, a production deployment **refuses** the attempts
+  that would need a challenge rather than skipping it. Locally it skips, so the
+  form works with no Cloudflare account.
+
+`docs/operations.md` covers all of this, plus rotation, retention and incident
+response.
+
+**`SUPABASE_SERVICE_ROLE_KEY` is deliberately not in that table.** No module in
+this application reads it. The one module that used to — the projection
+generator — now runs as the signed-in administrator and writes through an
+admin-checked function. Leave the key unset: a key that bypasses RLS cannot leak
+from an application that never loads it.
 
 ## Data sources
 
@@ -95,6 +117,39 @@ sudo sh supabase/verify/run-local.sh
 When the CLI is unavailable, run the files in `supabase/migrations/` in order
 against the SQL editor, then `supabase/seed.sql` to load the demonstration
 records. Never edit an applied migration — add a new one.
+
+### Verifying the database
+
+Every command below needs a PostgreSQL 15 server binary and **no Supabase project
+or credential**:
+
+```bash
+# Schema, RLS, privacy, integrity and login hardening.
+# Applies every migration to an empty throwaway cluster, then runs five
+# assertion suites against it.
+sudo sh supabase/verify/run-local.sh
+
+# Concurrency: two interleaved sessions proving the write-skew guards block.
+sudo sh supabase/verify/04_concurrency.sh
+
+# Generated-type drift, the same comparison CI makes.
+sudo sh supabase/verify/gen-types.sh /tmp/generated.ts
+node scripts/compare-database-types.mjs /tmp/generated.ts src/types/database.ts
+```
+
+On Amazon Linux 2023: `dnf install -y postgresql15-server postgresql15
+postgresql15-contrib`. On Debian/Ubuntu: `apt-get install -y postgresql-15`.
+
+CI runs all of it on every push against a `postgres:15-alpine` service container
+— deliberately not a Supabase project, so CI never holds production credentials.
+The concurrency suite shares its checks with the local script through
+`supabase/verify/_concurrency_body.sh`; only the way each reaches a server
+differs, so the two cannot drift apart.
+
+`src/types/database.ts` is hand-maintained, which is only safe because CI checks
+it: every table's column names and nullability, in both directions, plus every
+declared function. A column added to a migration and not added there fails the
+build.
 
 ## Media and storage
 
@@ -451,6 +506,51 @@ The admin system lives at `/admin` and uses Supabase Auth with email/password.
    ```
 3. Visit `/admin/login` and sign in with those credentials.
 
+`docs/operations.md` covers provisioning subsequent administrators, removing
+access in a hurry, and why deactivating beats deleting.
+
+### Login hardening
+
+Four things guard the login form. All are enforced server-side; none can be
+skipped by a client.
+
+**One message for every rejection.** Wrong password, no such account, correct
+password for somebody who is not an administrator, correct password for a
+deactivated administrator — all four get the same sentence. The previous
+implementation answered "You do not have administrator access" for a valid
+credential belonging to a non-administrator, which confirmed both that the
+account existed and that the password was right. A genuine service failure gets a
+*different* message, because telling somebody their password is wrong when the
+database is unreachable sends them to reset a password that was fine.
+
+**A throttle that lives in the database.** Fifteen-minute window; three failures
+require a CAPTCHA, ten refuse the attempt. Counted per email and per hashed
+address independently, and the stricter of the two wins. A success does *not*
+reset the count — one correct password cannot clear the record of an attack in
+progress. State is in `admin_login_attempts` rather than in memory because
+serverless instances share no memory, and an in-process counter is bypassed by
+whatever hits a cold start.
+
+**Addresses are stored as salted SHA-256, never raw.** Throttling needs to
+recognise a repeat client, not to know where it is. Without `LOGIN_HASH_SALT` the
+hash function returns null and per-address throttling is skipped, rather than
+storing an unsalted hash that is trivially reversible.
+
+**Turnstile, enforced by the deployment rather than the configuration.** In
+production, unset keys mean the attempts that need a challenge are refused;
+locally they are skipped. Verification failures fail closed too — an unreachable
+verifier during a burst of failed logins is exactly when it matters.
+
+Also: `signOut({ scope: "global" })` revokes every refresh token rather than only
+this browser's, and the post-login `next` parameter goes through an allow-list of
+shape — it must be a single-slash relative path under `/admin` that is not the
+login page — so it cannot become an open redirect.
+
+**Multi-factor authentication is not enforced.** Supabase Auth supports TOTP, but
+the enrolment screen, the challenge step and the per-account requirement are not
+built. `docs/operations.md` states the gap plainly and describes what closing it
+requires.
+
 ### Admin routes
 
 | Route                     | Purpose                                 |
@@ -701,7 +801,9 @@ grants — an audit trail the audited party can edit is not an audit trail.
 Entries written by `save_property_location` are inside its transaction, so
 the trail cannot record a save that was rolled back.
 
-Purging on a retention schedule remains possible for the service role. That
+Purging on a retention schedule remains possible for a database owner
+connecting directly — not for the application, which holds no such credential.
+That
 is deliberate: it is an operational act, not something an admin session
 should be able to perform.
 
@@ -713,13 +815,29 @@ should be able to perform.
   Action. There is no client-only check.
 - Authorization is read from `admin_users` on every request. JWT claims and
   `user_metadata` are never trusted.
-- The service-role key is used by exactly one module,
-  `generate-public-locations.ts`. All admin CRUD uses the authenticated client
-  under RLS.
+- **The service-role key is read by no module.** Every database call in the
+  application, admin included, goes through the anon key plus the caller's
+  session, so RLS applies to all of it. Work that needs more than an
+  administrator's own grants goes through `SECURITY DEFINER` functions that
+  check `is_admin()` and pin `search_path`.
 - Search terms are escaped and quoted before reaching PostgREST. Interpolating
   them into an `or=` expression would let a comma or parenthesis add filters
   the caller never wrote; `lib/admin/search.ts` prevents it, and sort columns
   come from an allow-list because identifiers cannot be parameterised.
+- Failed logins are throttled in the database, rejected with a single
+  non-enumerating message, and recorded without ever storing a password, a token
+  or a raw client address. See *Login hardening* above.
+- Every response carries a Content-Security-Policy, HSTS, `nosniff`, a referrer
+  policy, a permissions policy, COOP and `X-Frame-Options: DENY`. The admin gets a
+  per-request nonce and forbids inline script; static public pages get a policy
+  without `'strict-dynamic'`, because `'strict-dynamic'` makes browsers ignore the
+  `'unsafe-inline'` those pages need. Asserted against served HTML by
+  `scripts/verify-public-pages.sh`, including that every inline script on a nonce
+  route actually carries the nonce.
+- The audit log is append-only in the database, not merely by convention:
+  `update`, `delete` and `truncate` are revoked *and* refused by triggers, for the
+  table owner too. Purging it on a retention schedule requires deliberately
+  disabling those triggers — see `docs/operations.md`.
 
 ## Content: build timeline and features
 
@@ -1190,9 +1308,38 @@ npm run typecheck  # tsc --noEmit
 npm test           # Vitest, run once
 ```
 
-CI runs `npm ci`, `npm run lint`, `npm run typecheck`, `npm test` and
-`npm run build` on every push and pull request. See
-`.github/workflows/ci.yml`. The build needs no secrets.
+Verification scripts, none of which need a Supabase project:
+
+```bash
+sh scripts/verify-public-pages.sh          # security headers + structured data,
+                                           # asserted against served HTML.
+                                           # Needs a completed `npm run build`.
+sudo sh supabase/verify/run-local.sh       # migrations + five SQL suites
+sudo sh supabase/verify/04_concurrency.sh  # two interleaved sessions
+sh scripts/check-type-drift.sh             # generated types vs database.ts (CI)
+```
+
+### Continuous integration
+
+`.github/workflows/ci.yml`, on every push and pull request, in two jobs:
+
+- **`verify`** — `npm ci`, lint, typecheck, test, build, then
+  `scripts/verify-public-pages.sh` against the built output. Asserting headers
+  against *served HTML* rather than against the config that produces them is the
+  point: a header that a test says is present but the server does not send is
+  worse than no test.
+- **`database`** — a `postgres:15-alpine` service container. Applies the stubs and
+  every migration to an empty database, runs all five SQL assertion suites, runs
+  the concurrency suite over TCP, then regenerates types from the result and fails
+  on drift.
+
+Neither job holds a production credential. The database job uses a throwaway
+container rather than a Supabase project, and the build needs no secrets — a
+missing Mapbox token degrades to the list-only fallback instead of failing.
+
+`.github/dependabot.yml` batches patch and minor updates into one pull request per
+dependency type each week and leaves majors ungrouped, so a `next` or `react`
+major arrives as its own reviewable change rather than inside a batch of fifteen.
 
 ## Routes
 
@@ -1435,9 +1582,13 @@ src/
 `npm test` covers the pure logic behind the site: listing filters and URL
 round-tripping, GeoJSON generation, the location-privacy transform, slug lookup,
 row mapping, media configuration and path validation, admin search escaping,
-error handling, the construction timeline, the metadata chain, and every
-validation module — property, location, media, construction, features, enquiry,
-SEO and settings.
+error handling, the construction timeline, the metadata chain, the security-header
+and Content-Security-Policy builders, the login-security helpers (address
+hashing, redirect allow-list, Turnstile enforcement rules), and every validation
+module — property, location, media, construction, features, enquiry, SEO and
+settings.
+
+512 tests across 24 files at the time of writing.
 
 Tests live beside the code as `*.test.ts`. There is no component or browser test
 setup — that would be a much heavier commitment than the current surface
@@ -1583,3 +1734,17 @@ Import the repository into Vercel, add the environment variables, and deploy. No
 adapters or custom configuration are needed. `next.config.ts` automatically
 allows `next/image` to load from your Supabase Storage public bucket once
 `NEXT_PUBLIC_SUPABASE_URL` is set.
+
+**`docs/operations.md` is the runbook**: the full environment variable reference,
+Supabase and storage setup, administrator provisioning, Turnstile, staging the
+CSP, deploying and rolling back migrations, backup and restore, retention for the
+audit log and login attempts, the queries worth monitoring, and incident response
+— including how to revoke an administrator's access in one statement.
+
+Two things to do before the first production deploy:
+
+1. Set `LOGIN_HASH_SALT` and both Turnstile keys. A production deployment without
+   the Turnstile keys refuses the login attempts that need a challenge.
+2. Deploy once with `CSP_REPORT_ONLY=true`, exercise the map, an upload, an embed
+   and a login, check the browser console for violations, then remove it. The
+   policy is enforced by default; this only stages the first rollout.
