@@ -139,6 +139,23 @@ jobs:
       # `src/types/database.ts` is hand-maintained, which is only safe if
       # something checks it against the schema. This regenerates from the
       # database built above and fails when the two disagree.
+      #
+      # Node and the dependencies come last on purpose: the SQL above needs
+      # neither, so a broken migration fails in seconds rather than after an
+      # install.
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        # The comparator parses both type files with the TypeScript compiler
+        # rather than regexes, and `typescript` is a devDependency here. Using
+        # the repository's own version keeps the parse consistent with the
+        # typecheck in the other job.
+        run: npm ci
+
       - name: Install the Supabase CLI
         run: |
           curl -fsSL https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz \

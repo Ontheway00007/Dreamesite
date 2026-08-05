@@ -55,7 +55,20 @@
 
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
-import ts from "typescript";
+
+// `typescript` is a devDependency, so this needs an installed tree. Imported
+// dynamically to turn a module-resolution stack trace into an instruction —
+// a CI job that runs the SQL suites but not `npm ci` hits exactly this.
+let ts;
+try {
+  ts = (await import("typescript")).default;
+} catch {
+  console.error(
+    "Could not load the `typescript` package, which this script uses to parse\n" +
+      "both type files. Run `npm ci` first — it is a devDependency of this repository.",
+  );
+  process.exit(2);
+}
 
 // ----------------------------------------------------------------------
 // Arguments
