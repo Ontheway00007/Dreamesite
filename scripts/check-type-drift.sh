@@ -32,10 +32,46 @@ REPO=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 
 DB_URL="postgresql://${PGUSER}:${PGPASSWORD:-}@${PGHOST}:${PGPORT}/${PGDATABASE}"
 GENERATED=$(mktemp)
-trap 'rm -f "$GENERATED"' EXIT
+GEN_ERR=$(mktemp)
+trap 'rm -f "$GENERATED" "$GEN_ERR"' EXIT
 
+# `gen types` runs postgres-meta in a container, which it pulls from a public
+# registry. That pull is rate-limited for anonymous clients, so it fails
+# intermittently for reasons that have nothing to do with this schema — a check
+# that reports drift when a registry is busy trains people to ignore it.
+#
+# Retried with a widening delay. A genuine mismatch fails on the first attempt
+# and every attempt after it, so retrying costs nothing when the news is real.
 echo "Generating types from the live schema..."
-supabase gen types typescript --db-url "$DB_URL" --schema public > "$GENERATED"
+
+attempt=1
+max_attempts=4
+delay=15
+
+while :; do
+  # stderr goes to its own file: the CLI writes progress there, and folding it
+  # into the output would put prose in the middle of the TypeScript.
+  if supabase gen types typescript --db-url "$DB_URL" --schema public \
+      > "$GENERATED" 2> "$GEN_ERR" \
+    && grep -q 'Tables:' "$GENERATED"
+  then
+    break
+  fi
+
+  if [ "$attempt" -ge "$max_attempts" ]; then
+    echo "Type generation failed after $max_attempts attempts."
+    echo "--- stderr"
+    sed -n '1,20p' "$GEN_ERR"
+    echo "--- stdout"
+    sed -n '1,20p' "$GENERATED"
+    exit 1
+  fi
+
+  echo "  attempt $attempt did not produce usable output; retrying in ${delay}s"
+  attempt=$((attempt + 1))
+  sleep "$delay"
+  delay=$((delay + 15))
+done
 
 # Functions owned by an extension — pgcrypto's `gen_random_uuid`, `crypt`,
 # `dearmor` and friends. They land in `public` here because the harness installs

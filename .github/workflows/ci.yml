@@ -1,13 +1,24 @@
 name: CI
 
+# Pull requests, plus direct pushes to main.
+#
+# Not `push: ["**"]` as well. With an open pull request both triggers fire for the
+# same commit, which ran everything twice — and the two runs then competed for the
+# same anonymous container-registry pull in the type-drift step and rate-limited
+# each other. Pushing to a branch with an open pull request still runs CI, via
+# `synchronize`.
+#
+# `workflow_dispatch` covers the gap: a branch with no pull request yet can be
+# run from the Actions tab.
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 
-# A newer push to the same branch cancels the previous run.
+# A newer push to the same pull request cancels the previous run.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
