@@ -324,7 +324,7 @@ export function toPublicProperty(record: PropertyRecord): Property {
     carSpaces: record.carSpaces,
     landSize: record.landSize,
     houseSize: record.houseSize,
-    imagePath: record.imagePath,
+    heroImage: record.heroImage,
     placeholderVariant: record.placeholderVariant,
     completionLabel: record.completionLabel,
     priceDisplay: record.priceDisplay,

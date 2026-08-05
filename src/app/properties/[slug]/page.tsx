@@ -5,25 +5,27 @@ import { Container } from "@/components/layout/container";
 import { Reveal } from "@/components/motion/reveal";
 import { PropertyDetailHero } from "@/components/property/detail/property-detail-hero";
 import { PropertyDetailSpecs } from "@/components/property/detail/property-detail-specs";
+import { PropertyFeatures } from "@/components/property/detail/property-features";
+import { EnquiryForm } from "@/components/enquiry/enquiry-form";
 import { PropertyLocationSection } from "@/components/property/detail/property-location-section";
 import { PropertyProgress } from "@/components/property/detail/property-progress";
 import { PropertyResources } from "@/components/property/detail/property-resources";
 import { PropertyShowcase } from "@/components/property/detail/property-showcase";
 import { PropertyTestimonials } from "@/components/property/detail/property-testimonials";
 import { RelatedProperties } from "@/components/property/detail/related-properties";
-import { Button } from "@/components/ui/button";
 import { Eyebrow, Heading, Text } from "@/components/ui/typography";
-import { propertyStatusTokens } from "@/lib/design/property-status";
-import { propertyMediaUrl } from "@/lib/images/property-image";
-import { env } from "@/lib/env";
+import { floorPlanVisuals } from "@/lib/properties/media";
+import { JsonLd } from "@/components/seo/json-ld";
+import { propertyMetadata } from "@/lib/seo/metadata";
+import { breadcrumbSchema, residenceSchema } from "@/lib/seo/structured-data";
+import { getPublicSettings } from "@/lib/settings/public-settings";
+import { PropertyFloorPlans } from "@/components/property/detail/property-floor-plans";
 import {
   descriptionBlocks,
   getPropertyBySlug,
   getPropertySlugs,
   getRelatedProperties,
 } from "@/lib/properties/repository";
-import { ENQUIRY_ANCHOR, PROPERTIES_ROUTE } from "@/lib/routes";
-import { siteConfig } from "@/lib/site-config";
 import type { Property } from "@/types";
 
 /**
@@ -61,26 +63,18 @@ export async function generateMetadata({
     return { title: "Home not found" };
   }
 
-  const status = propertyStatusTokens[property.status].label;
-  const description = `${property.summary} ${status} in ${property.suburb} ${property.state}.`;
-  const canonicalUrl = `${env.siteUrl}${PROPERTIES_ROUTE}/${property.slug}`;
+  // The whole chain — administrator override, then the property's own content,
+  // then the site default — lives in lib/seo/metadata.ts. The site-wide level is
+  // passed in rather than read there, so the resolver stays a pure function.
+  // `getPublicSettings` is request-cached, so this shares the read with the
+  // layout and the page body.
+  const settings = await getPublicSettings();
 
-  // The architectural drawing is not a photograph of the home, so it is left
-  // out of the Open Graph image rather than shared as if it were one.
-  const imageUrl = propertyMediaUrl(property.imagePath);
-
-  return {
-    title: `${property.name}, ${property.suburb}`,
-    description,
-    alternates: { canonical: canonicalUrl },
-    openGraph: {
-      type: "website",
-      title: `${property.name}, ${property.suburb}`,
-      description,
-      url: canonicalUrl,
-      ...(imageUrl ? { images: [{ url: imageUrl }] } : {}),
-    },
-  };
+  return propertyMetadata(property, {
+    defaultMetaTitle: settings.defaultMetaTitle,
+    defaultMetaDescription: settings.defaultMetaDescription,
+    defaultOgImageUrl: settings.defaultOgImageUrl,
+  });
 }
 
 /** Section wrapper, so the rhythm of the page is defined in one place. */
@@ -112,6 +106,14 @@ function DetailSection({
 }
 
 function progressDescription(property: Property): string {
+  const hasRecord = (property.constructionUpdates ?? []).length > 0;
+
+  if (hasRecord) {
+    return property.status === "under-construction"
+      ? "Updates recorded against this home as the build has progressed."
+      : "The stages recorded against this home through to completion.";
+  }
+
   return property.status === "under-construction"
     ? "Where this home is in our documented build process."
     : "This home has progressed through every recorded construction stage.";
@@ -127,9 +129,34 @@ export default async function PropertyPage({ params }: PropertyPageProps) {
 
   const related = await getRelatedProperties(slug);
   const hasTestimonials = (property.testimonials ?? []).length > 0;
+  // Only counts plans whose file actually resolves, so the section never
+  // appears as an empty heading.
+  const hasFloorPlans = floorPlanVisuals(property).some(
+    (plan) => plan.url !== null,
+  );
+  const hasFeatures = (property.featureGroups ?? []).some(
+    (group) => group.features.length > 0,
+  );
+
+  // Request-cached, so this shares the read with the layout and generateMetadata.
+  const settings = await getPublicSettings();
 
   return (
     <Container width="content" className="pt-(--header-height)">
+      {/*
+        Two documents rather than one graph: they describe different things, and
+        a crawler that rejects one should still get the other. Both contain only
+        what this page displays — see lib/seo/structured-data.ts for what is
+        deliberately absent, and why no coordinate ever appears here.
+      */}
+      <JsonLd
+        data={residenceSchema(property, {
+          defaultMetaTitle: settings.defaultMetaTitle,
+          defaultMetaDescription: settings.defaultMetaDescription,
+          defaultOgImageUrl: settings.defaultOgImageUrl,
+        })}
+      />
+      <JsonLd data={breadcrumbSchema(property)} />
       <div className="py-12 md:py-16">
         <PropertyDetailHero property={property} />
       </div>
@@ -160,6 +187,18 @@ export default async function PropertyPage({ params }: PropertyPageProps) {
         <PropertyDetailSpecs property={property} />
       </DetailSection>
 
+      {/* Follows the measured figures: the same subject in more detail. Renders
+          only when this home has published features. */}
+      {hasFeatures ? (
+        <DetailSection
+          eyebrow="Features"
+          title="What is in the home."
+          description="Inclusions, materials and finishes recorded for this home."
+        >
+          <PropertyFeatures property={property} />
+        </DetailSection>
+      ) : null}
+
       <DetailSection
         eyebrow="Build progress"
         title="Every stage, on the record."
@@ -167,6 +206,18 @@ export default async function PropertyPage({ params }: PropertyPageProps) {
       >
         <PropertyProgress property={property} />
       </DetailSection>
+
+      {/* Floor plans sit between the measurements and the location: they
+          answer "how does it lay out?", which follows on from the figures. */}
+      {hasFloorPlans ? (
+        <DetailSection
+          eyebrow="Floor plan"
+          title="How the home is arranged."
+          description="Drawn to the plan for this home."
+        >
+          <PropertyFloorPlans property={property} />
+        </DetailSection>
+      ) : null}
 
       <DetailSection
         eyebrow="Location"
@@ -185,25 +236,18 @@ export default async function PropertyPage({ params }: PropertyPageProps) {
         </DetailSection>
       ) : null}
 
+      {/* The enquiry is attached to this property, so the admin list shows
+          which home was being asked about rather than just "website". */}
       <DetailSection
         eyebrow="Enquire"
         title="Ask us anything about this home."
         description="Send through your questions and timeframe, and our team will reply with the detail you need — including location and availability."
       >
-        <div className="flex flex-wrap gap-4">
-          <Button
-            href={`mailto:${siteConfig.contact.email}?subject=${encodeURIComponent(
-              `${property.name}, ${property.suburb}`,
-            )}`}
-            variant="accent"
-            size="lg"
-          >
-            Email our team
-          </Button>
-          <Button href={ENQUIRY_ANCHOR} variant="ghost" size="lg">
-            Other ways to reach us
-          </Button>
-        </div>
+        <EnquiryForm
+          propertyId={property.id}
+          source="property-page"
+          defaultMessage={`I would like to know more about ${property.name} in ${property.suburb}.`}
+        />
       </DetailSection>
 
       {related.length > 0 ? (

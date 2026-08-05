@@ -1,229 +1,281 @@
-/**
- * Server-only projection generator service.
- *
- * Reads private locations and privacy settings, runs the canonical privacy
- * pipeline, and upserts the resulting rows into `property_public_locations`.
- *
- * This module MUST NEVER run in the browser bundle:
- * - It requires the Supabase service-role key.
- * - It reads private tables (`property_private_locations`,
- *   `property_location_settings`) that have no anon/authenticated policies.
- * - It is the only code path that writes to `property_public_locations`.
- *
- * Usage:
- *   Called from admin actions (Phase 6) after any privacy setting change, or
- *   from a CLI script to regenerate all projections after a bulk edit.
- *
- * @module server-only
- */
-
 import "server-only";
 
-import { createClient } from "@supabase/supabase-js";
-
 import { getSuburbReference } from "@/content/suburb-references";
+import { callRpc } from "@/lib/admin/rpc";
+import { logAdminError, toFriendlyError } from "@/lib/admin/errors";
 import {
   buildPublicLocation,
   toPublicLocationRow,
   type ProjectionInput,
 } from "@/lib/properties/projection";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type {
-  Database,
   PropertyLocationSettingsRow,
   PropertyPrivateLocationsRow,
 } from "@/types/database";
 
 /**
- * Creates a service-role Supabase client for privileged writes.
+ * Regenerates public location projections.
  *
- * This client bypasses RLS and must only be used in server-side code that
- * writes generated data. It is never cached between requests.
+ * Needed when the privacy algorithm itself changes: every stored projection was
+ * derived by the previous version and has to be recomputed. Nothing else should
+ * call this — an ordinary privacy edit goes through `saveLocationAction`, which
+ * derives and writes in one step.
+ *
+ * ## What this used to be, and why it was dangerous
+ *
+ * It read the property, the private location and the settings with the
+ * **service role**, computed the projection, and upserted it unconditionally.
+ * Three problems, in increasing order of seriousness:
+ *
+ * 1. Nothing called it. It was privileged code with no caller — the worst kind
+ *    to leave lying around, because nobody exercising it means nobody noticing
+ *    when it breaks.
+ * 2. The service role bypasses RLS, so a bug here could write anything.
+ * 3. **A location save committing between the read and the write was silently
+ *    undone.** The direction of that failure is the worst available: an
+ *    administrator changing visibility to `hidden` could have the previous
+ *    public coordinate restored underneath them, by a background job, with no
+ *    error anywhere.
+ *
+ * ## What it is now
+ *
+ * The service role is gone. This runs as the signed-in administrator, so RLS
+ * applies to every read and `save_regenerated_public_location` enforces
+ * `is_admin()` on the write. The service-role key is no longer used by any
+ * module in the application.
+ *
+ * The write is version-checked. Every projection is derived from three rows, so
+ * all three `updated_at` values are read first and passed to the RPC, which
+ * takes the property lock, confirms none has moved, and refuses with `PT409`
+ * otherwise. A regeneration cannot overwrite a decision made after it started.
+ *
+ * ## Why the privacy algorithm is still in TypeScript
+ *
+ * Unchanged, and deliberately so. `buildPublicLocation` in
+ * `lib/properties/privacy.ts` is the single definition of what may be published.
+ * The RPC stores what it is given and verifies the inputs are current; it does
+ * not decide anything about privacy. A second implementation in SQL would be a
+ * second definition, and the two would drift.
  */
-function createServiceClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
 
-  if (!url || !serviceKey) {
-    throw new Error(
-      "Cannot generate public locations: NEXT_PUBLIC_SUPABASE_URL and " +
-        "SUPABASE_SERVICE_ROLE_KEY must both be set.",
-    );
-  }
-
-  return createClient<Database>(url, serviceKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-  });
-}
+/** Why one property's projection was not rewritten. */
+export type ProjectionSkipReason =
+  /** No private location or no settings: there is nothing to project. */
+  | "not-configured"
+  /** Another write landed first. The caller may retry. */
+  | "conflict"
+  | "failed";
 
 export interface ProjectionResult {
   readonly propertyId: string;
   readonly success: boolean;
+  readonly reason?: ProjectionSkipReason;
+  /** Administrator-facing, already passed through the error mapper. */
   readonly error?: string;
 }
 
+type AdminClient = Awaited<ReturnType<typeof createAdminClient>>;
+
 /**
- * Regenerates the public location projection for a single property.
+ * Regenerates one property's projection.
  *
- * Reads the private location and privacy settings, runs the canonical
- * transform, and upserts the result into `property_public_locations`.
+ * Returns rather than throws, because the bulk path needs to report on every
+ * property rather than stopping at the first that has moved.
  */
-export async function generatePublicLocationForProperty(
+export async function regeneratePublicLocation(
   propertyId: string,
+  client?: AdminClient,
 ): Promise<ProjectionResult> {
-  const client = createServiceClient();
+  const supabase = client ?? (await createAdminClient());
 
-  // Read the property's basic info (suburb, state, name)
-  const { data: propertyData, error: propError } = await client
+  const { data: propertyData, error: propertyError } = await supabase
     .from("properties")
-    .select("id, name, suburb, state")
+    .select("id, name, suburb, state, updated_at")
     .eq("id", propertyId)
-    .single();
+    .maybeSingle();
 
-  if (propError || !propertyData) {
-    return {
-      propertyId,
-      success: false,
-      error: `Property not found: ${propError?.message ?? "no row"}`,
-    };
+  if (propertyError) {
+    logAdminError(`Regenerating projection: reading property ${propertyId}`, propertyError);
+    return { propertyId, success: false, reason: "failed", error: "Could not read the property." };
+  }
+
+  if (!propertyData) {
+    return { propertyId, success: false, reason: "failed", error: "That property no longer exists." };
   }
 
   const property = propertyData as unknown as {
-    id: string;
     name: string;
     suburb: string;
     state: string;
+    updated_at: string;
   };
 
-  // Read private location
-  const { data: privateLocationData, error: locError } = await client
+  const { data: privateData, error: privateError } = await supabase
     .from("property_private_locations")
     .select("*")
     .eq("property_id", propertyId)
-    .single();
+    .maybeSingle();
 
-  if (locError || !privateLocationData) {
-    return {
-      propertyId,
-      success: false,
-      error: `Private location not found: ${locError?.message ?? "no row"}`,
-    };
+  if (privateError) {
+    logAdminError(`Regenerating projection: reading private location ${propertyId}`, privateError);
+    return { propertyId, success: false, reason: "failed", error: "Could not read the stored position." };
   }
 
-  const privateLocation =
-    privateLocationData as unknown as PropertyPrivateLocationsRow;
-
-  // Read privacy settings
-  const { data: settingsData, error: settingsError } = await client
+  const { data: settingsData, error: settingsError } = await supabase
     .from("property_location_settings")
     .select("*")
     .eq("property_id", propertyId)
-    .single();
+    .maybeSingle();
 
-  if (settingsError || !settingsData) {
-    return {
-      propertyId,
-      success: false,
-      error: `Location settings not found: ${settingsError?.message ?? "no row"}`,
-    };
+  if (settingsError) {
+    logAdminError(`Regenerating projection: reading settings ${propertyId}`, settingsError);
+    return { propertyId, success: false, reason: "failed", error: "Could not read the privacy settings." };
   }
 
+  // A property with no location configured has no projection to regenerate.
+  // Not an error: most drafts are in exactly this state.
+  if (!privateData || !settingsData) {
+    return { propertyId, success: false, reason: "not-configured" };
+  }
+
+  const privateLocation = privateData as unknown as PropertyPrivateLocationsRow;
   const settings = settingsData as unknown as PropertyLocationSettingsRow;
 
-  // Resolve the postcode from the private location
-  const postcode = privateLocation.postcode ?? "";
-
-  // Build the projection input
   const input: ProjectionInput = {
     propertyId,
     propertyName: property.name,
     suburb: property.suburb,
     state: property.state,
-    postcode,
+    postcode: privateLocation.postcode ?? "",
     settings,
     privateLocation,
   };
 
-  // Run the canonical privacy pipeline
-  const publicLocation = buildPublicLocation(input);
-  const row = toPublicLocationRow(propertyId, publicLocation);
+  const projection = toPublicLocationRow(propertyId, buildPublicLocation(input));
 
-  // Upsert into property_public_locations.
-  // The hand-maintained Database types use simplified generics that resolve to
-  // `never` for insert/upsert. A proper `supabase gen types` run fixes this;
-  // until then the assertion to `unknown` is the minimum escape hatch.
-  const upsertPayload: unknown = { ...row, generated_at: new Date().toISOString() };
-  const { error: upsertError } = await (
-    client.from("property_public_locations") as unknown as {
-      upsert(
-        values: unknown,
-        options: { onConflict: string },
-      ): PromiseLike<{ error: { message: string } | null }>;
+  const { error: rpcError } = await callRpc(
+    supabase,
+    "save_regenerated_public_location",
+    {
+      p_property_id: propertyId,
+      // All three versions the derivation above depended on.
+      p_expected_property_updated_at: property.updated_at,
+      p_expected_private_updated_at: privateLocation.updated_at,
+      p_expected_settings_updated_at: settings.updated_at,
+      p_location_visibility: projection.location_visibility,
+      p_public_latitude: projection.public_latitude,
+      p_public_longitude: projection.public_longitude,
+      p_public_address: projection.public_address,
+      p_marker_mode: projection.marker_mode,
+      p_location_label: projection.location_label,
+      p_accuracy_note: projection.accuracy_note,
+      p_allow_directions: projection.allow_directions,
+    },
+  );
+
+  if (rpcError) {
+    // PT409 means somebody changed the location while this was being computed.
+    // Expected under load, and not a fault — the newer decision stands.
+    if (rpcError.code === "PT409") {
+      return {
+        propertyId,
+        success: false,
+        reason: "conflict",
+        error: toFriendlyError(rpcError),
+      };
     }
-  ).upsert(upsertPayload, { onConflict: "property_id" });
 
-  if (upsertError) {
+    logAdminError(`Regenerating projection: writing ${propertyId}`, rpcError);
+
     return {
       propertyId,
       success: false,
-      error: `Upsert failed: ${upsertError.message}`,
+      reason: "failed",
+      error: toFriendlyError(rpcError, "Could not write the projection."),
     };
   }
 
   return { propertyId, success: true };
 }
 
-/**
- * Regenerates public location projections for ALL properties that have both
- * a private location and privacy settings configured.
- *
- * Returns a result for each property attempted. Properties without private
- * locations or settings are silently skipped — they simply have no projection.
- */
-export async function generateAllPublicLocations(): Promise<ProjectionResult[]> {
-  const client = createServiceClient();
-
-  // Find all properties that have both a private location and settings
-  const { data: propertiesData, error } = await client
-    .from("properties")
-    .select("id, name, suburb, state");
-
-  if (error || !propertiesData) {
-    return [
-      {
-        propertyId: "all",
-        success: false,
-        error: `Failed to load properties: ${error?.message ?? "no data"}`,
-      },
-    ];
-  }
-
-  const properties = propertiesData as unknown as Array<{
-    id: string;
-    name: string;
-    suburb: string;
-    state: string;
-  }>;
-
-  const results: ProjectionResult[] = [];
-
-  for (const property of properties) {
-    const result = await generatePublicLocationForProperty(property.id);
-    results.push(result);
-  }
-
-  return results;
+export interface BulkProjectionSummary {
+  readonly attempted: number;
+  readonly regenerated: number;
+  readonly notConfigured: number;
+  readonly conflicted: number;
+  readonly failed: number;
+  readonly results: readonly ProjectionResult[];
 }
 
 /**
- * Validates that the suburb reference data required by the projection pipeline
- * is available. Returns suburb names that lack a reference position.
+ * Regenerates every configured property's projection.
  *
- * Admin UIs should call this before accepting a "suburb" visibility setting
- * for a suburb without a reference.
+ * Sequential on purpose. Each property takes its own advisory lock, so running
+ * them in parallel would contend with whatever administrators are doing in the
+ * dashboard at the time. Regeneration is rare and not urgent; the interactive
+ * path is neither.
+ *
+ * Conflicts are reported, not retried. A property that changed under the job has
+ * a projection derived from data newer than anything here — retrying would be
+ * racing the administrator for the right to describe their own property, and
+ * losing that race is the correct outcome. The summary says how many, so the job
+ * can simply be run again.
+ */
+export async function regenerateAllPublicLocations(): Promise<BulkProjectionSummary> {
+  const supabase = await createAdminClient();
+
+  const { data, error } = await supabase
+    .from("properties")
+    .select("id")
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    logAdminError("Regenerating projections: listing properties", error);
+
+    return {
+      attempted: 0,
+      regenerated: 0,
+      notConfigured: 0,
+      conflicted: 0,
+      failed: 1,
+      results: [
+        {
+          propertyId: "all",
+          success: false,
+          reason: "failed",
+          error: "Could not list the properties.",
+        },
+      ],
+    };
+  }
+
+  const ids = ((data ?? []) as unknown as Array<{ id: string }>).map(
+    (row) => row.id,
+  );
+
+  const results: ProjectionResult[] = [];
+
+  for (const id of ids) {
+    results.push(await regeneratePublicLocation(id, supabase));
+  }
+
+  return {
+    attempted: results.length,
+    regenerated: results.filter((result) => result.success).length,
+    notConfigured: results.filter((r) => r.reason === "not-configured").length,
+    conflicted: results.filter((r) => r.reason === "conflict").length,
+    failed: results.filter((r) => r.reason === "failed").length,
+    results,
+  };
+}
+
+/**
+ * Suburb names with no reference position.
+ *
+ * A suburb-only marker is placed at the suburb's reference centre, so a suburb
+ * without one cannot be projected. The admin location tab checks this before
+ * offering "suburb" visibility.
  */
 export function getMissingSuburbReferences(suburbs: string[]): string[] {
   return suburbs.filter((suburb) => getSuburbReference(suburb) === null);

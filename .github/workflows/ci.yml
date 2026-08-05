@@ -1,13 +1,24 @@
 name: CI
 
+# Pull requests, plus direct pushes to main.
+#
+# Not `push: ["**"]` as well. With an open pull request both triggers fire for the
+# same commit, which ran everything twice — and the two runs then competed for the
+# same anonymous container-registry pull in the type-drift step and rate-limited
+# each other. Pushing to a branch with an open pull request still runs CI, via
+# `synchronize`.
+#
+# `workflow_dispatch` covers the gap: a branch with no pull request yet can be
+# run from the Actions tab.
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 
-# A newer push to the same branch cancels the previous run.
+# A newer push to the same pull request cancels the previous run.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -42,3 +53,148 @@ jobs:
       # list-only fallback rather than failing.
       - name: Build
         run: npm run build
+
+      # Asserts the security headers and the structured data against served
+      # HTML rather than against the config that produces them. Needs the build
+      # above, so it runs in this job rather than its own.
+      - name: Verify public pages in production mode
+        run: sh scripts/verify-public-pages.sh
+
+  database:
+    name: Migrations, RLS and concurrency
+    runs-on: ubuntu-latest
+
+    # A real PostgreSQL, because the thing under test is SQL. Deliberately not a
+    # Supabase project: CI must never hold production credentials, and the
+    # harness supplies the `auth` and `storage` stubs the migrations reference.
+    #
+    # 15 matches the version the harness has been validated against. Supabase
+    # runs 17; the migrations use nothing version-specific, and the type-drift
+    # check below would catch a difference in generated output.
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_PASSWORD: verify
+          POSTGRES_DB: verify
+        ports:
+          - 5432:5432
+        # Without this the first psql can arrive before the server is listening.
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: verify
+      PGDATABASE: verify
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Install the PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y postgresql-client
+
+      # ------------------------------------------------------------------
+      # Migrations, from an empty database, in order, with no manual steps
+      # ------------------------------------------------------------------
+      - name: Apply the Supabase stubs
+        run: psql -v ON_ERROR_STOP=1 -f supabase/verify/00_supabase_stubs.sql
+
+      - name: Apply every migration in order
+        run: |
+          set -euo pipefail
+          for file in supabase/migrations/*.sql; do
+            echo "--- $file"
+            psql -v ON_ERROR_STOP=1 -f "$file"
+          done
+
+      # Applying the same files twice must not be required to succeed — they are
+      # forward migrations, not idempotent scripts — but the *set* must be
+      # complete, which is what the checks below establish.
+      - name: Run the SQL verification suites
+        run: |
+          set -euo pipefail
+          for checks in \
+            supabase/verify/01_checks.sql \
+            supabase/verify/02_checks_phase63.sql \
+            supabase/verify/03_checks_phase631.sql \
+            supabase/verify/05_checks_phase632.sql \
+            supabase/verify/06_checks_login_and_integrity.sql
+          do
+            echo "--- $checks"
+            psql -v ON_ERROR_STOP=1 -f "$checks"
+          done
+
+      # ------------------------------------------------------------------
+      # Concurrency
+      # ------------------------------------------------------------------
+      #
+      # Two live sessions against a clean database of its own. The script builds
+      # its own cluster locally; in CI the service container is the cluster, so
+      # it is driven through the same psql interface over TCP.
+      - name: Run the concurrency suite
+        run: sh supabase/verify/ci-concurrency.sh
+
+      # ------------------------------------------------------------------
+      # Generated type drift
+      # ------------------------------------------------------------------
+      #
+      # `src/types/database.ts` is hand-maintained, which is only safe if
+      # something checks it against the schema. This regenerates from the
+      # database built above and fails when the two disagree.
+      #
+      # Node and the dependencies come last on purpose: the SQL above needs
+      # neither, so a broken migration fails in seconds rather than after an
+      # install.
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        # The comparator parses both type files with the TypeScript compiler
+        # rather than regexes, and `typescript` is a devDependency here. Using
+        # the repository's own version keeps the parse consistent with the
+        # typecheck in the other job.
+        run: npm ci
+
+      - name: Install the Supabase CLI
+        run: |
+          curl -fsSL https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz \
+            -o /tmp/supabase.tar.gz
+          tar -xzf /tmp/supabase.tar.gz -C /usr/local/bin supabase
+          supabase --version
+
+      - name: Check the generated database types for drift
+        run: sh scripts/check-type-drift.sh
+
+  # A single required status check to point branch protection at.
+  #
+  # `needs` alone is not enough: a skipped or cancelled dependency counts as
+  # satisfied, so a job that never ran would let a merge through. This asserts
+  # the results explicitly and runs on `always()` so it cannot itself be skipped
+  # into a pass.
+  gate:
+    name: All checks passed
+    runs-on: ubuntu-latest
+    needs: [verify, database]
+    if: always()
+    steps:
+      - name: Assert both jobs succeeded
+        run: |
+          echo "verify:   ${{ needs.verify.result }}"
+          echo "database: ${{ needs.database.result }}"
+          if [ "${{ needs.verify.result }}" != "success" ] \
+            || [ "${{ needs.database.result }}" != "success" ]; then
+            echo "::error::One or more required jobs did not succeed."
+            exit 1
+          fi

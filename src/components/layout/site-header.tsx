@@ -15,7 +15,8 @@ import { Menu, X } from "lucide-react";
 
 import { Container } from "@/components/layout/container";
 import { Button } from "@/components/ui/button";
-import { primaryNav, siteConfig } from "@/lib/site-config";
+import { ENQUIRY_ANCHOR } from "@/lib/routes";
+import { primaryNav } from "@/lib/site-config";
 import { cn } from "@/lib/utils/cn";
 import { useSmoothScroll } from "@/providers/smooth-scroll-provider";
 
@@ -35,7 +36,16 @@ function focusableWithin(container: HTMLElement): HTMLElement[] {
  * element always exists, and `inert` guarantees nothing inside it is focusable
  * or announced while it is closed.
  */
-export function SiteHeader() {
+export function SiteHeader({
+  /**
+   * The trading name to show as the wordmark. Passed in rather than imported so
+   * the business can change it in Settings — this is a Client Component and
+   * cannot read the database itself.
+   */
+  companyName,
+}: {
+  companyName: string;
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const headerRef = useRef<HTMLElement>(null);
@@ -143,7 +153,10 @@ export function SiteHeader() {
     scrollTo(href.slice(hashIndex), -96);
   };
 
-  const contactHref = `mailto:${siteConfig.contact.email}`;
+  // The contact anchor, not a mailto. The page it scrolls to carries the real
+  // enquiry form; a mailto depends on the visitor having a mail client set up
+  // and leaves the business with no record of the enquiry.
+  const contactHref = ENQUIRY_ANCHOR;
 
   return (
     <header
@@ -161,7 +174,7 @@ export function SiteHeader() {
           className="font-display text-xl font-light tracking-[0.28em] uppercase"
           onClick={() => close(false)}
         >
-          {siteConfig.name}
+          {companyName}
         </Link>
 
         <nav aria-label="Primary" className="hidden items-center gap-9 md:flex">

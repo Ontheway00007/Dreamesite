@@ -4,8 +4,10 @@
  * Rebuilds `property_public_locations` for a property from its stored
  * private position + privacy settings. Runs the canonical privacy pipeline
  * rather than duplicating it, and returns the row that should be upserted.
- * Nothing here touches the browser bundle; call it from a Node context with
- * a service-role key.
+ * Pure: no I/O and no database client of any kind. The caller reads the rows,
+ * calls this, and writes the result through an admin-checked function — see
+ * `generate-public-locations.ts`. Nothing here needs elevated privileges,
+ * because nothing here talks to the database.
  */
 
 import { toPublicProperty } from "@/lib/properties/privacy";
@@ -81,7 +83,7 @@ export function buildPublicLocation(
 export function toPublicLocationRow(
   propertyId: string,
   location: PublicPropertyLocation,
-): Omit<PropertyPublicLocationsRow, "generated_at"> {
+): Omit<PropertyPublicLocationsRow, "generated_at" | "stale_since"> {
   return {
     property_id: propertyId,
     location_visibility: location.visibility,

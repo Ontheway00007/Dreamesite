@@ -94,13 +94,52 @@ export interface PropertyAddressRecord {
 /* Property content                                                           */
 /* -------------------------------------------------------------------------- */
 
+/* -------------------------------------------------------------------------- */
+/* Media sources                                                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Where a piece of media actually lives.
+ *
+ * A storage path and an external URL need opposite treatment: the first must
+ * have the bucket URL prepended, the second is already complete. The previous
+ * model expressed both as optional sibling fields (`path?`, `externalUrl?`),
+ * which made "which one is set?" a question every reader had to answer for
+ * itself — and one of them got it wrong, routing external document URLs
+ * through the storage URL builder and producing dead links inside our own
+ * bucket.
+ *
+ * A discriminated union makes the question unaskable: there is exactly one
+ * source, its kind is stated, and `resolveMediaSource` in
+ * `lib/properties/media.ts` is the only thing that turns it into a URL.
+ */
+export type MediaSource =
+  | {
+      readonly kind: "storage";
+      /** Object name inside the property-media bucket. Never a full URL. */
+      readonly path: string;
+    }
+  | {
+      readonly kind: "external";
+      /** Absolute HTTPS URL. Never a bucket-relative path. */
+      readonly url: string;
+    };
+
+/** Which folder an image belongs to. Mirrors `property_images.image_type`. */
+export type PropertyImageCategory =
+  | "hero"
+  | "gallery"
+  | "facade"
+  | "construction"
+  | "floor_plan"
+  | "drone";
+
 /**
  * A visual attached to a property.
  *
  * One shape covers photography, drone footage, a virtual tour and a floor plan
  * image, so adding any of them later is a data change rather than a new section
- * type. `path` points inside the Supabase Storage bucket; `externalUrl` is for
- * media hosted elsewhere, such as a tour provider.
+ * type.
  */
 export type PropertyVisualKind =
   | "photo"
@@ -111,11 +150,27 @@ export type PropertyVisualKind =
 export interface PropertyVisual {
   readonly id: string;
   readonly kind: PropertyVisualKind;
-  readonly path?: string;
-  readonly externalUrl?: string;
+  readonly source: MediaSource;
+  /**
+   * Describes the image for someone who cannot see it.
+   *
+   * Distinct from `caption`, which is shown to everyone and often adds
+   * context rather than describing the picture. A caption is not a
+   * substitute for alt text.
+   */
+  readonly altText?: string;
   readonly caption?: string;
-  /** Poster image for a video or tour, as a storage path. */
-  readonly posterPath?: string;
+  /** Poster still for a video or tour. */
+  readonly poster?: MediaSource;
+  /** The group this image belongs to, for sectioned display. */
+  readonly category?: PropertyImageCategory;
+}
+
+/** The image representing a property on cards, previews and social shares. */
+export interface PropertyHeroImage {
+  readonly id: string;
+  readonly source: MediaSource;
+  readonly altText?: string;
 }
 
 /** A downloadable document: brochure, floor plan PDF, specification sheet. */
@@ -123,8 +178,7 @@ export interface PropertyDocument {
   readonly id: string;
   readonly kind: "brochure" | "floorplan" | "specification";
   readonly label: string;
-  /** Path inside the Supabase Storage bucket. */
-  readonly path: string;
+  readonly source: MediaSource;
   readonly fileSizeLabel?: string;
 }
 
@@ -161,6 +215,96 @@ export interface PropertyDescription {
   readonly source: "written" | "ai-assisted";
 }
 
+/* -------------------------------------------------------------------------- */
+/* Construction updates                                                       */
+/* -------------------------------------------------------------------------- */
+
+/** Build stages an update may describe. Mirrors the database vocabulary. */
+export type ConstructionStageId =
+  | "planning"
+  | "site-preparation"
+  | "slab"
+  | "frame"
+  | "lock-up"
+  | "fixing"
+  | "final-inspection"
+  | "completion";
+
+export type ConstructionUpdateStatus = "planned" | "in-progress" | "complete";
+
+/**
+ * One editorial entry in a home's build diary.
+ *
+ * Distinct from the derived timeline in `lib/properties/construction-progress.ts`,
+ * which infers position from `currentStageId` against the company's documented
+ * process. These are written per home and, when present, are what the public
+ * page shows — a real record rather than an inference.
+ */
+export interface PropertyConstructionUpdate {
+  readonly id: string;
+  readonly stage: ConstructionStageId;
+  readonly title: string;
+  readonly description?: string;
+  readonly status: ConstructionUpdateStatus;
+  /** 0–100, when progress is tracked for this stage. */
+  readonly progressValue?: number;
+  /** ISO timestamp of when the work happened, when recorded. */
+  readonly occurredAt?: string;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Features                                                                   */
+/* -------------------------------------------------------------------------- */
+
+/** Feature groups, which become headings on the property page. */
+export type PropertyFeatureCategory =
+  | "highlight"
+  | "inclusion"
+  | "specification"
+  | "material"
+  | "energy"
+  | "design";
+
+/**
+ * A richer specification than the fixed columns can express.
+ *
+ * "Energy rating — 7 stars", or a label alone where none is needed:
+ * "Double glazing throughout".
+ */
+export interface PropertyFeature {
+  readonly id: string;
+  readonly category: PropertyFeatureCategory;
+  readonly label: string;
+  readonly value?: string;
+}
+
+/** Features of one category, ready to render as a section. */
+export interface PropertyFeatureGroup {
+  readonly category: PropertyFeatureCategory;
+  readonly heading: string;
+  readonly features: readonly PropertyFeature[];
+}
+
+/* -------------------------------------------------------------------------- */
+/* SEO                                                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Per-property metadata overrides.
+ *
+ * Every field is optional because null means "fall back": the resolver in
+ * `lib/seo/metadata.ts` tries the override, then the property's own content,
+ * then the site default.
+ */
+export interface PropertySeo {
+  readonly metaTitle?: string;
+  readonly metaDescription?: string;
+  /** Resolved absolute URL of the chosen social image, when it is publishable. */
+  readonly ogImageUrl?: string;
+  readonly canonicalUrl?: string;
+  readonly noindex: boolean;
+}
+
 /** Display home details, when a property is open to visit. */
 export interface DisplayHomeDetails {
   readonly isDisplayHome: boolean;
@@ -192,10 +336,13 @@ export interface PropertyBase {
   /** Internal floor area in square metres, when measured. */
   readonly houseSize?: number;
   /**
-   * Path inside the Supabase Storage bucket, once photography exists. While it
-   * is undefined the card renders the architectural placeholder.
+   * The published hero image, once photography exists. While it is undefined
+   * the card renders the architectural placeholder.
+   *
+   * Replaces the earlier `imagePath` string, which could only describe a
+   * stored file and so silently ignored an externally hosted hero.
    */
-  readonly imagePath?: string;
+  readonly heroImage?: PropertyHeroImage;
   readonly placeholderVariant: ArchitecturalVariant;
   /** Human-readable completion timing, when there is something to say. */
   readonly completionLabel?: string;
@@ -213,6 +360,15 @@ export interface PropertyBase {
   /** Brochures and floor plan documents. */
   readonly documents?: readonly PropertyDocument[];
   readonly testimonials?: readonly PropertyTestimonial[];
+  /**
+   * Published build-diary entries, in display order. When present the public
+   * timeline shows these; when absent it falls back to the derived one.
+   */
+  readonly constructionUpdates?: readonly PropertyConstructionUpdate[];
+  /** Published features, already grouped by category. */
+  readonly featureGroups?: readonly PropertyFeatureGroup[];
+  /** Metadata overrides. Absent when the property uses only fallbacks. */
+  readonly seo?: PropertySeo;
   readonly displayHome?: DisplayHomeDetails;
   /**
    * The build stage currently under way, matching an id in `content/process.ts`.
@@ -284,6 +440,6 @@ export type PropertyPreview = Pick<
   | "bathrooms"
   | "carSpaces"
   | "landSize"
-  | "imagePath"
+  | "heroImage"
   | "placeholderVariant"
 >;

@@ -54,7 +54,7 @@ export function PropertyCard({
           className="absolute top-5 left-5"
         />
 
-        {property.imagePath ? null : (
+        {property.heroImage ? null : (
           <span className="text-foreground-subtle absolute right-5 bottom-4 text-[0.625rem] font-medium tracking-[0.2em] uppercase">
             Architectural preview
           </span>

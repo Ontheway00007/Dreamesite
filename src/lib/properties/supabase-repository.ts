@@ -21,31 +21,97 @@ import type { PropertySource } from "@/lib/properties/source";
 /* --- Column sets --------------------------------------------------------- */
 
 /**
- * Enough for cards, the map and the list. Includes image metadata so the
- * mapper can find the hero image and choose the placeholder variant.
+ * Enough for cards, the map and the list.
+ *
+ * The embedded image selection is narrowed twice over: to the hero row by the
+ * `image_type` filter applied at each call site, and to the handful of columns
+ * a card actually reads. A card shows one image, so pulling a property's
+ * entire gallery to render a thumbnail is work nobody asked for — and on the
+ * explorer, that is every property's gallery on one page.
+ *
  * No description body, no resources, no testimonials.
  */
+/**
+ * The `property_images` embed, disambiguated by foreign key.
+ *
+ * There are **two** foreign keys between `properties` and `property_images`:
+ *
+ *   property_images_property_id_fkey   property_images.property_id -> properties.id
+ *   properties_seo_og_image_id_fkey    properties.seo_og_image_id -> property_images.id
+ *
+ * The second was added by migration 0010 for the per-property social-preview
+ * override. From that moment a bare `property_images (...)` embed became
+ * ambiguous, and PostgREST refuses to guess: it answers **HTTP 300** with
+ * `PGRST201` instead of returning rows. Every public read that embeds images —
+ * the listing, the homepage and the detail page — returned nothing, so a
+ * correctly published property was invisible and its page 404ed.
+ *
+ * The `!constraint` suffix is a *hint*, not an alias: the response key stays
+ * `property_images`, which is what keeps the contract with `mapPropertyRow`
+ * intact. That distinction matters — see the note on DETAIL_SELECT below about
+ * aliasing having silently broken these lookups once before.
+ *
+ * Nothing local could have caught this. The SQL harness never speaks PostgREST,
+ * the unit tests mock the client, and development runs on fixtures. It appeared
+ * the first time a real project held a real property.
+ */
+const PROPERTY_IMAGES_EMBED = "property_images!property_images_property_id_fkey";
+
 const SUMMARY_SELECT = `
   id, slug, name, summary, status, suburb, state,
   bedrooms, bathrooms, car_spaces, land_size_sqm, house_size_sqm,
   price_display, completion_label, is_featured, display_priority,
   display_is_home, display_opening_note, current_stage_id,
   description_source,
-  location: property_public_locations (
+  property_public_locations (
     location_visibility, public_latitude, public_longitude,
     public_address, marker_mode, location_label, accuracy_note,
     allow_directions
   ),
-  images: property_images (id, image_type, storage_path, external_url, alt_text, caption, sort_order, is_published)
+  ${PROPERTY_IMAGES_EMBED} (id, image_type, storage_path, external_url, alt_text, is_published)
 `;
 
-/** Everything the detail page needs, including description and children. */
+/**
+ * Restricts the embedded images to the hero row.
+ *
+ * PostgREST filters embedded resources without excluding parents, so a
+ * property with no hero still comes back — it simply arrives with an empty
+ * image list and renders the architectural placeholder.
+ *
+ * This is an optimisation, not a correctness control. `mapPropertyRow` locates
+ * the hero among whatever rows it receives and ignores the rest, so if this
+ * filter were removed the output would be identical, only more expensive.
+ *
+ * Note the asymmetry with `PROPERTY_IMAGES_EMBED`: the *select* needs the
+ * `!constraint` hint to disambiguate, but the *filter* addresses the embedded
+ * resource by its plain name. Writing the hint here instead produces a
+ * `PGRST100` parse failure. Verified against the live API, not assumed.
+ */
+const HERO_ONLY_FILTER = { column: "property_images.image_type", value: "hero" } as const;
+
+/**
+ * Everything the detail page needs, including description and children.
+ *
+ * The embedded resources are deliberately **not** aliased. PostgREST names the
+ * returned key after the alias when one is given, and `mapPropertyRow` reads
+ * `property_images`, `property_public_locations`, `property_resources` and
+ * `property_testimonials`. An earlier version aliased all four to shorter
+ * names, so every one of those lookups found `undefined`: locations fell back
+ * to "hidden", and no image, document or testimonial ever reached a page. The
+ * fixtures used in development and CI do not go through this query, which is
+ * why it went unnoticed.
+ *
+ * The key names here are part of the contract with the mapper. Renaming one
+ * means renaming it in `PropertyJoinedRow` too.
+ */
 const DETAIL_SELECT = `
   *,
-  location: property_public_locations (*),
-  images: property_images (*),
-  resources: property_resources (*),
-  testimonials: property_testimonials (*)
+  property_public_locations (*),
+  ${PROPERTY_IMAGES_EMBED} (*),
+  property_resources (*),
+  property_testimonials (*),
+  construction_updates (*),
+  property_features (*)
 `;
 
 /* --- Row mapping ---------------------------------------------------------- */
@@ -111,6 +177,7 @@ async function getSupabaseFeaturedProperties(): Promise<Property[]> {
       .select(SUMMARY_SELECT)
       .eq("is_published", true)
       .eq("is_featured", true)
+      .eq(HERO_ONLY_FILTER.column, HERO_ONLY_FILTER.value)
       .order("display_priority", { ascending: true })
       .order("name", { ascending: true }),
   );
@@ -127,6 +194,7 @@ async function getSupabaseProperties(): Promise<Property[]> {
       .from("properties")
       .select(SUMMARY_SELECT)
       .eq("is_published", true)
+      .eq(HERO_ONLY_FILTER.column, HERO_ONLY_FILTER.value)
       .order("display_priority", { ascending: true })
       .order("name", { ascending: true }),
   );
@@ -200,6 +268,7 @@ export async function getSupabaseRelated(
       .from("properties")
       .select(SUMMARY_SELECT)
       .eq("is_published", true)
+      .eq(HERO_ONLY_FILTER.column, HERO_ONLY_FILTER.value)
       .neq("slug", slug)
       .order("display_priority", { ascending: true })
       .order("name", { ascending: true }),

@@ -1,14 +1,14 @@
 import Image from "next/image";
 
 import { ArchitecturalFrame } from "@/components/media/architectural-frame";
-import { propertyMediaUrl } from "@/lib/images/property-image";
+import { resolveMediaSource } from "@/lib/properties/media";
 import { cn } from "@/lib/utils/cn";
 import type { Property } from "@/types";
 
 export interface PropertyMediaProps {
   property: Pick<
     Property,
-    "name" | "suburb" | "imagePath" | "placeholderVariant"
+    "name" | "suburb" | "heroImage" | "placeholderVariant"
   >;
   /** Image sizes hint for the responsive loader. */
   sizes?: string;
@@ -30,13 +30,15 @@ export function PropertyMedia({
   labelClassName,
   className,
 }: PropertyMediaProps) {
-  const imageUrl = propertyMediaUrl(property.imagePath);
+  const imageUrl = resolveMediaSource(property.heroImage?.source);
 
   if (imageUrl) {
     return (
       <Image
         src={imageUrl}
-        alt={`${property.name}, ${property.suburb}`}
+        // The editor's alt text when there is one; otherwise the name and
+        // suburb, which is accurate rather than a generic "property image".
+        alt={property.heroImage?.altText ?? `${property.name}, ${property.suburb}`}
         fill
         sizes={sizes}
         className={cn("object-cover", className)}

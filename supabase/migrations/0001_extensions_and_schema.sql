@@ -166,9 +166,24 @@ create table public.suburb_references (
   longitude   double precision not null check (longitude between -180 and 180),
   is_active   boolean not null default true,
   created_at  timestamptz not null default now(),
-  updated_at  timestamptz not null default now(),
-  constraint suburb_references_unique unique (lower(suburb), state)
+  updated_at  timestamptz not null default now()
 );
+
+/*
+  One locality per suburb and state, matched case-insensitively.
+
+  This has to be a unique *index*, not a unique constraint. PostgreSQL accepts
+  only bare column names in `UNIQUE (...)` on a table — an expression such as
+  `lower(suburb)` is a syntax error, so the constraint form of this rule could
+  never be applied. A unique index enforces exactly the same rule and is the
+  documented way to express it.
+
+  Discovered when the verification harness was first executed against a real
+  PostgreSQL 15: migration 0001 failed to parse, which meant nothing after it
+  applied either.
+*/
+create unique index suburb_references_unique
+  on public.suburb_references (lower(suburb), state);
 
 comment on table public.suburb_references is
   'Public-safe locality centres used for suburb-only markers. Never derived from a property.';

@@ -63,10 +63,15 @@ The regeneration routine lives in two modules:
   (marked with `import "server-only"`) that orchestrates the workflow:
 
 1. Reads `property_private_locations`, `property_location_settings` and the
-   property's suburb/state through the service-role key.
+   property's suburb/state **as the signed-in administrator**, under RLS. No
+   service-role key is involved; the application does not hold one.
 2. Calls `buildPublicLocation` from `projection.ts` — the same pipeline
    `toPublicProperty` uses locally, so the algorithm is never duplicated.
-3. Upserts the resulting row into `property_public_locations`.
+3. Writes the result through `save_regenerated_public_location`, which takes the
+   property advisory lock and refuses with `PT409` unless the property, the
+   private location and the settings all still match the versions step 1 read.
+   A regeneration therefore cannot restore a coordinate that a newer privacy
+   decision has superseded.
 
 It never runs in the browser, never sees the anon key, and never appears in
 the client bundle. When the Phase 6 admin actions land, the save handler calls

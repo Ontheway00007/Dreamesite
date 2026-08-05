@@ -47,7 +47,10 @@ only property table anonymous users may touch.
 `house_number`, `street`, `postcode`. One row per property.
 
 RLS: enabled, no anon or authenticated policies in Phase 5. Reads and writes
-are service-role only until Phase 6 admin policies exist.
+had no admin policies when this was written. Phase 6 added them, and Phase 6.3.2
+narrowed them again: the three location tables are now readable by
+administrators but writable only through `save_property_location`,
+`clear_property_location` and `save_regenerated_public_location`.
 
 ### `property_location_settings` — admin-controlled privacy config
 
