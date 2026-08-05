@@ -154,13 +154,25 @@ export function MapStage({ properties, summary, token }: MapStageProps) {
             <span className="text-foreground-muted">One map.</span>
           </h1>
 
-          <p className="text-foreground-muted mt-5 max-w-sm text-sm leading-relaxed sm:text-base">
-            {hasProperties
-              ? "Dreame builds in Melbourne’s northern growth corridor. Every home we have on the ground is on this map, marked with the stage it is actually at."
-              : "Dreame builds in Melbourne’s northern growth corridor. Homes appear on this map as each one is published."}
+          {/*
+            Shorter on small screens. The brief is explicit that text must not
+            cover most of the map, and the longer sentence costs three lines at
+            390px where it costs one at desktop width.
+          */}
+          <p className="text-foreground-muted mt-4 max-w-sm text-sm leading-relaxed sm:mt-5 sm:text-base">
+            <span className="sm:hidden">
+              {hasProperties
+                ? "Every home we have on the ground, marked with the stage it is at."
+                : "Homes appear here as each one is published."}
+            </span>
+            <span className="hidden sm:inline">
+              {hasProperties
+                ? "Dreame builds in Melbourne’s northern growth corridor. Every home we have on the ground is on this map, marked with the stage it is actually at."
+                : "Dreame builds in Melbourne’s northern growth corridor. Homes appear on this map as each one is published."}
+            </span>
           </p>
 
-          <div className="mt-6 flex flex-wrap items-center gap-3">
+          <div className="mt-5 flex flex-wrap items-center gap-3 sm:mt-6">
             <a
               href={`${PROPERTIES_ROUTE}?status=move-in-ready`}
               className="focus-visible:ring-ring bg-foreground text-foreground-inverse hover:bg-accent-strong group inline-flex items-center gap-2 rounded-lg px-5 py-3 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none"
@@ -269,45 +281,63 @@ interface StatusRailProps {
  */
 function StatusRail({ summary, active, onToggle, disabled }: StatusRailProps) {
   return (
-    <div
-      role="group"
-      aria-label="Filter the map by build stage"
-      className="border-border bg-surface/80 shadow-raised flex w-full snap-x gap-1 overflow-x-auto rounded-xl border p-1 backdrop-blur-xl sm:w-auto sm:self-start"
-    >
-      {summary.statuses.map(({ status, count }) => {
+    /*
+      The rail scrolls horizontally when four statuses will not fit — a 390px
+      viewport cannot show them all. The scrollbar is hidden and a fade is drawn
+      over the trailing edge instead, so a clipped item reads as "there is more
+      this way" rather than as a broken layout. `snap-x` makes the scroll land on
+      whole items.
+    */
+    <div className="relative w-full sm:w-auto sm:self-start">
+      <div
+        role="group"
+        aria-label="Filter the map by build stage"
+        className="border-border bg-surface/80 shadow-raised flex w-full snap-x gap-1 overflow-x-auto rounded-xl border p-1 backdrop-blur-xl [-ms-overflow-style:none] [scrollbar-width:none] sm:w-auto [&::-webkit-scrollbar]:hidden"
+      >
+        {summary.statuses.map(({ status, count }) => {
         const token = propertyStatusTokens[status];
         const isActive = active === status;
         const isEmpty = count === 0;
 
-        return (
-          <button
-            key={status}
-            type="button"
-            onClick={() => onToggle(status)}
-            disabled={disabled || isEmpty}
-            aria-pressed={isActive}
-            title={token.description}
-            className={cn(
-              "focus-visible:ring-ring group flex shrink-0 snap-start items-center gap-2.5 rounded-lg px-3.5 py-2.5 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none",
-              isActive ? "bg-foreground/10" : "hover:bg-foreground/5",
-              (disabled || isEmpty) && "cursor-not-allowed opacity-45",
-            )}
-          >
-            <span
-              aria-hidden="true"
-              className={cn("size-2 shrink-0 rounded-full", token.swatchClassName)}
-            />
-            <span className="flex flex-col leading-tight">
-              <span className="text-foreground text-sm font-medium tabular-nums">
-                {count}
+          return (
+            <button
+              key={status}
+              type="button"
+              onClick={() => onToggle(status)}
+              disabled={disabled || isEmpty}
+              aria-pressed={isActive}
+              title={token.description}
+              className={cn(
+                "focus-visible:ring-ring group flex shrink-0 snap-start items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none sm:gap-2.5 sm:px-3.5 sm:py-2.5",
+                isActive ? "bg-foreground/10" : "hover:bg-foreground/5",
+                (disabled || isEmpty) && "cursor-not-allowed opacity-45",
+              )}
+            >
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "size-2 shrink-0 rounded-full",
+                  token.swatchClassName,
+                )}
+              />
+              <span className="flex flex-col leading-tight">
+                <span className="text-foreground text-sm font-medium tabular-nums">
+                  {count}
+                </span>
+                <span className="text-foreground-subtle text-[0.68rem] whitespace-nowrap sm:text-[0.7rem]">
+                  {token.label}
+                </span>
               </span>
-              <span className="text-foreground-subtle text-[0.7rem] whitespace-nowrap">
-                {token.label}
-              </span>
-            </span>
-          </button>
-        );
-      })}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Trailing fade, mobile only — the rail fits from `sm` up. */}
+      <div
+        aria-hidden="true"
+        className="from-surface pointer-events-none absolute inset-y-0 right-0 w-10 rounded-r-xl bg-gradient-to-l to-transparent sm:hidden"
+      />
     </div>
   );
 }
