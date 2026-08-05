@@ -7,8 +7,8 @@ import { cn } from "@/lib/utils/cn";
 
 export interface ParallaxProps {
   /**
-   * Pixels the content travels across the scroll range. Positive values move
-   * the content down, creating a slower-than-scroll feel.
+   * Pixels the content travels across the scroll range. Positive values move it
+   * down, creating a slower-than-scroll feel.
    */
   distance?: number;
   className?: string;
@@ -16,8 +16,9 @@ export interface ParallaxProps {
 }
 
 /**
- * Scroll-linked translation powered by GSAP ScrollTrigger. Reverts itself on
- * unmount and is skipped for visitors who prefer reduced motion.
+ * Scroll-linked translation powered by GSAP ScrollTrigger. The nearest parent is
+ * used as the trigger so the layer itself can move freely. Reverts on unmount
+ * and is skipped for visitors who prefer reduced motion.
  */
 export function Parallax({
   distance = 120,
@@ -26,11 +27,11 @@ export function Parallax({
 }: ParallaxProps) {
   const ref = useGsap<HTMLDivElement>(
     ({ element, gsap }) => {
-      gsap.to(element.firstElementChild, {
+      gsap.to(element, {
         y: distance,
         ease: "none",
         scrollTrigger: {
-          trigger: element,
+          trigger: element.parentElement ?? element,
           start: "top bottom",
           end: "bottom top",
           scrub: true,
@@ -42,7 +43,7 @@ export function Parallax({
 
   return (
     <div ref={ref} className={cn("will-change-transform", className)}>
-      <div>{children}</div>
+      {children}
     </div>
   );
 }

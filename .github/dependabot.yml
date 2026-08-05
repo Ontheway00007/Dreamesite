@@ -1,0 +1,82 @@
+version: 2
+
+# Dependency updates.
+#
+# ## Why grouped, and why majors are not
+#
+# Ungrouped Dependabot on a project this size opens a dozen pull requests a week,
+# every one of which needs a CI run and a human. The predictable result is that
+# nobody reads them and security updates sit in the queue with the noise.
+#
+# So routine patch and minor bumps are batched into one pull request per
+# dependency type — one CI run, one review, one merge. Majors are deliberately
+# left ungrouped: `next`, `react` and `@supabase/supabase-js` majors carry
+# migration work, and a major that lands inside a batch of fifteen bumps is a
+# major nobody read the changelog for. One PR per major keeps that decision
+# visible.
+#
+# Production and development dependencies are split so a failing build is
+# immediately attributable to one or the other, rather than needing a bisect
+# through a mixed batch.
+#
+# Security advisories bypass grouping and the open-PR limit entirely — GitHub
+# raises those separately, which is the behaviour we want.
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: Australia/Melbourne
+    # Enough headroom for the two grouped PRs plus a few outstanding majors.
+    open-pull-requests-limit: 8
+    labels:
+      - dependencies
+    commit-message:
+      # Matches the Conventional Commit style used in this repository's history.
+      prefix: chore
+      prefix-development: chore
+      include: scope
+    groups:
+      production-minor-and-patch:
+        applies-to: version-updates
+        dependency-type: production
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+      development-minor-and-patch:
+        applies-to: version-updates
+        dependency-type: development
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  # The workflow files pin actions by major tag (`actions/checkout@v4`), which
+  # does not pick up a v5. Without this, CI actions silently rot.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: Australia/Melbourne
+    open-pull-requests-limit: 4
+    labels:
+      - dependencies
+      - ci
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch

@@ -128,7 +128,7 @@
   --text-eyebrow--line-height: 1.2;
   --text-eyebrow--letter-spacing: 0.22em;
 
-  --text-display: clamp(2.75rem, 7vw, 6.5rem);
+  --text-display: clamp(2.75rem, 6.4vw, 5.75rem);
   --text-display--line-height: 0.98;
   --text-display--letter-spacing: -0.03em;
 
@@ -203,10 +203,117 @@
     scroll-behavior: smooth;
   }
 
+  /* Scroll lock for overlays. Lenis handles its own via `.lenis-stopped`. */
+  html[data-scroll-locked] {
+    overflow: hidden;
+  }
+
+  /* Anchor jumps are explicitly instant for reduced-motion visitors, and every
+     animation and transition is reduced to a single frame so end states apply
+     without movement. */
   @media (prefers-reduced-motion: reduce) {
     html:not(.lenis) {
-      scroll-behavior: auto;
+      scroll-behavior: auto !important;
     }
+
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-delay: 0ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      transition-delay: 0ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* ==========================================================================
+   Entrance choreography
+   CSS owns every load-time entrance. One system, one place, staged with
+   `--enter-delay`:
+     - it starts with the first paint, so nothing flashes,
+     - it needs no JavaScript, so content is never trapped in a hidden state,
+     - it does not exist at all for reduced-motion visitors, because the whole
+       block is behind `prefers-reduced-motion: no-preference`.
+   GSAP is reserved for scroll-linked work, Framer Motion for stateful UI.
+   ========================================================================== */
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes enter-rise {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 1.25rem, 0);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @keyframes enter-fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes enter-draw {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(1);
+    }
+  }
+
+  @keyframes enter-word {
+    from {
+      transform: translate3d(0, 115%, 0);
+    }
+    to {
+      transform: none;
+    }
+  }
+
+  @keyframes cue-travel {
+    from {
+      transform: translateY(-100%);
+    }
+    to {
+      transform: translateY(100%);
+    }
+  }
+
+  /* Fade and rise. The default entrance. */
+  [data-enter] {
+    animation: enter-rise var(--duration-slow) var(--ease-entrance) both;
+    animation-delay: var(--enter-delay, 0s);
+  }
+
+  /* Fade only, for large background layers. */
+  [data-enter="fade"] {
+    animation-name: enter-fade;
+    animation-duration: var(--duration-cinematic);
+  }
+
+  /* Draws a rule out from its origin. Requires a transform origin utility. */
+  [data-enter="draw"] {
+    animation-name: enter-draw;
+  }
+
+  /* A single word rising out of its mask. Staggered by AnimatedText. */
+  [data-enter="word"] {
+    animation-name: enter-word;
+    animation-duration: 0.95s;
+  }
+
+  /* The only looping animation on the page. */
+  [data-enter-loop="cue"] {
+    animation: cue-travel 1.9s var(--ease-luxe) 2s infinite;
   }
 }
 
@@ -216,6 +323,16 @@
 
 @utility hairline-top {
   border-top: 1px solid var(--border);
+}
+
+/* Architectural set-out grid used behind the hero. */
+@utility blueprint-grid {
+  --blueprint-line: color-mix(in oklab, var(--palette-linen) 7%, transparent);
+  background-image:
+    linear-gradient(to right, var(--blueprint-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--blueprint-line) 1px, transparent 1px);
+  background-size: 5rem 5rem;
+  background-position: center;
 }
 
 @utility grain {
@@ -235,4 +352,13 @@
     );
     background-size: 3px 3px;
   }
+}
+
+
+/* ==========================================================================
+   Admin form utilities
+   ========================================================================== */
+
+.admin-input {
+  @apply bg-surface border-border text-foreground placeholder:text-foreground-subtle focus:border-accent focus:ring-accent/20 block w-full rounded-lg border px-3 py-2 text-sm outline-none transition-colors focus:ring-2;
 }

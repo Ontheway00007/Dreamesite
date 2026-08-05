@@ -1,4 +1,4 @@
-import type { ElementType, ComponentPropsWithoutRef, ReactNode } from "react";
+import type { ComponentPropsWithoutRef } from "react";
 
 import { cn } from "@/lib/utils/cn";
 
@@ -11,29 +11,21 @@ const containerWidths = {
 
 export type ContainerWidth = keyof typeof containerWidths;
 
-export interface ContainerProps<T extends ElementType = "div"> {
-  /** Element to render. Defaults to a div. */
-  as?: T;
+export interface ContainerProps extends ComponentPropsWithoutRef<"div"> {
   width?: ContainerWidth;
-  className?: string;
-  children?: ReactNode;
 }
 
 /**
  * Horizontal layout primitive: centres content and applies the shared gutter.
  */
-export function Container<T extends ElementType = "div">({
-  as,
+export function Container({
   width = "wide",
   className,
   children,
   ...props
-}: ContainerProps<T> &
-  Omit<ComponentPropsWithoutRef<T>, keyof ContainerProps<T>>) {
-  const Component = (as ?? "div") as ElementType;
-
+}: ContainerProps) {
   return (
-    <Component
+    <div
       className={cn(
         "mx-auto w-full px-(--container-gutter)",
         containerWidths[width],
@@ -42,6 +34,6 @@ export function Container<T extends ElementType = "div">({
       {...props}
     >
       {children}
-    </Component>
+    </div>
   );
 }

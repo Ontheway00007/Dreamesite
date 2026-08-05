@@ -40,3 +40,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+
+# Supabase CLI working directory. `supabase start` writes generated container
+# secrets into .temp/start-secrets — never commit it.
+supabase/.temp/
