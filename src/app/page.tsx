@@ -1,30 +1,52 @@
+import { MapStage } from "@/components/home/map-stage";
 import { EnquirySection } from "@/components/sections/enquiry-section";
 import { FeaturedProperties } from "@/components/sections/featured-properties";
-import { Hero } from "@/components/sections/hero";
-import { MapPreviewSection } from "@/components/sections/map-preview-section";
 import { ProcessSection } from "@/components/sections/process-section";
 import { ServiceAreasSection } from "@/components/sections/service-areas-section";
-import { StatisticsSection } from "@/components/sections/statistics-section";
 import { StatusSection } from "@/components/sections/status-section";
+import { getMapboxToken } from "@/lib/map/map-config";
+import { summarisePortfolio } from "@/lib/properties/portfolio-summary";
+import { getProperties } from "@/lib/properties/repository";
 
 export const revalidate = 300;
 
-export default function HomePage() {
+/**
+ * The public homepage.
+ *
+ * ## Phase 7: the map is the opening, not a section
+ *
+ * The page previously opened with a text hero and put the map fourth, which
+ * inverted the thing that makes this business legible: where it builds and what
+ * stage each home is at are spatial facts. `MapStage` now owns the first
+ * viewport and the sections below elaborate on it.
+ *
+ * Retired here, and why:
+ *
+ * - `Hero` — a headline over an abstract façade drawing. Replaced by the map,
+ *   which says more about the portfolio in a glance than the copy did.
+ * - `MapPreviewSection` — a small map teaser that only existed because the real
+ *   map was buried. Redundant once the map opens the page.
+ * - `StatisticsSection` — four dashboard-style counters. The same counts are now
+ *   part of the map interface, where they are useful rather than decorative.
+ *
+ * ## Rendering
+ *
+ * Still statically generated with `revalidate = 300`. The properties are read on
+ * the server and handed to the stage as data, so the only client JavaScript is
+ * the map and its interaction — not the catalogue.
+ */
+export default async function HomePage() {
+  const properties = await getProperties();
+  const summary = summarisePortfolio(properties);
+  const token = getMapboxToken();
+
   return (
     <>
-      <Hero
-        eyebrow="Residential builder · Northern Melbourne"
-        headline="Homes built with intent, north of Melbourne."
-        body="We design and build in Mickleham, Craigieburn and Donnybrook, in Melbourne's northern growth corridor. Every home we show carries its current status, so you always know what is ready now and what is still on site."
-        scrollTarget="#homes"
-        scrollDestination="our façades"
-      />
+      <MapStage properties={properties} summary={summary} token={token} />
 
       <FeaturedProperties />
-      <MapPreviewSection />
       <StatusSection />
       <ProcessSection />
-      <StatisticsSection />
       <ServiceAreasSection />
 
       <EnquirySection

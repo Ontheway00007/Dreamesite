@@ -288,6 +288,36 @@
     }
   }
 
+  /*
+    The selected property arriving beside the map.
+
+    It enters from the edge it is anchored to rather than fading in place, so the
+    movement says where the panel came from and where dismissing it will send it
+    back. Both are applied through `motion-safe:` at the call site, so
+    `prefers-reduced-motion` leaves the panel simply present.
+  */
+  @keyframes map-panel-in {
+    from {
+      opacity: 0;
+      transform: translateX(2rem) scale(0.985);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0) scale(1);
+    }
+  }
+
+  @keyframes map-sheet-in {
+    from {
+      opacity: 0;
+      transform: translateY(100%);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
   /* Fade and rise. The default entrance. */
   [data-enter] {
     animation: enter-rise var(--duration-slow) var(--ease-entrance) both;
