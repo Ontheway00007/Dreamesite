@@ -503,3 +503,79 @@ describe("mapPropertyRow", () => {
     );
   });
 });
+
+
+/*
+  PostgREST returns a to-one embed as an object, not a one-element array.
+
+  `property_public_locations.property_id` is that table's primary key as well as
+  its foreign key, so the API answers with `{...}` while every other embed
+  answers with `[...]`. The mapper read `[0]` unconditionally, so on a real
+  response the location was `undefined` and silently became "hidden": the map
+  drew no marker and the property page showed no address, while the listing
+  looked fine because its fields come from the parent row.
+
+  These cases pin both shapes. The object case is what production actually
+  sends; the array case is what the fixtures and the rest of this file build.
+*/
+describe("mapPropertyRow — location embed shape", () => {
+  const location = {
+    property_id: "00000000-0000-4000-8000-000000000001",
+    location_visibility: "exact" as const,
+    public_latitude: -37.5680688,
+    public_longitude: 144.9058236,
+    public_address: "1 Solitaire Way, Mickleham VIC 3064",
+    marker_mode: "automatic" as const,
+    location_label: null,
+    accuracy_note: null,
+    allow_directions: true,
+    generated_at: "2026-08-05T00:00:00Z",
+    stale_since: null,
+  };
+
+  it("reads a to-one embed returned as a bare object, as PostgREST sends it", () => {
+    const property = mapPropertyRow(
+      propertyRow({ property_public_locations: location }),
+    );
+
+    expect(property.location.visibility).toBe("exact");
+    expect(property.location.publicLatitude).toBe(-37.5680688);
+    expect(property.location.publicLongitude).toBe(144.9058236);
+    expect(property.location.allowDirections).toBe(true);
+  });
+
+  it("still reads the array form, which the fixtures and tests build", () => {
+    const property = mapPropertyRow(
+      propertyRow({ property_public_locations: [location] }),
+    );
+
+    expect(property.location.visibility).toBe("exact");
+    expect(property.location.publicLatitude).toBe(-37.5680688);
+    expect(property.location.publicLongitude).toBe(144.9058236);
+  });
+
+  it("falls back to hidden when there is no location at all", () => {
+    const property = mapPropertyRow(
+      propertyRow({ property_public_locations: null }),
+    );
+
+    expect(property.location.visibility).toBe("hidden");
+    expect(property.location.publicLatitude).toBeUndefined();
+  });
+
+  it("produces a mappable coordinate from the object form", async () => {
+    const { isMappable } = await import("@/lib/properties/privacy");
+    const { propertiesToGeoJson } = await import("@/lib/map/geojson");
+
+    const property = mapPropertyRow(
+      propertyRow({ property_public_locations: location }),
+    );
+
+    // The specific failure the bug caused: no marker could ever be drawn.
+    expect(isMappable(property)).toBe(true);
+    expect(propertiesToGeoJson([property]).features).toHaveLength(1);
+    expect(propertiesToGeoJson([property]).features[0]?.geometry.coordinates).toEqual([
+      144.9058236, -37.5680688,
+    ]);
+  });
+});

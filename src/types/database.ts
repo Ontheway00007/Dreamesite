@@ -294,7 +294,16 @@ export type SiteSettingsPublicRow = Omit<
  * its related rows joined in one query, exactly the names `?select=` returns.
  */
 export interface PropertyJoinedRow extends PropertiesRow {
-  property_public_locations: PropertyPublicLocationsRow[] | null;
+  /**
+   * A single object, not an array — `property_id` is this table's primary key
+   * as well as its foreign key, so PostgREST treats the relationship as
+   * one-to-one and answers with `{...}`. The array form is kept in the union
+   * because the fixtures and unit tests build rows by hand.
+   */
+  property_public_locations:
+    | PropertyPublicLocationsRow
+    | PropertyPublicLocationsRow[]
+    | null;
   property_images: PropertyImagesRow[] | null;
   property_resources: PropertyResourcesRow[] | null;
   property_testimonials: PropertyTestimonialsRow[] | null;

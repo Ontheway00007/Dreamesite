@@ -447,7 +447,26 @@ function mapTestimonial(
  * this side of the boundary.
  */
 export function mapPropertyRow(row: PropertyJoinedRow): Property {
-  const locationRows = row.property_public_locations ?? [];
+  /*
+    PostgREST returns a to-one embed as a single object, not a one-element
+    array.
+
+    `property_public_locations.property_id` is that table's primary key as well
+    as its foreign key, so the relationship is one-to-one and the API answers
+    with `{...}` where the other embeds answer with `[...]`. This code read
+    `[0]` unconditionally, which on a real response is `undefined` — so the
+    location silently fell back to "hidden" for every property. The map had no
+    marker to draw and the property page showed no address, while the listing
+    looked correct because its fields come from the parent row.
+
+    Both shapes are accepted rather than only the object, because the fixtures
+    and the unit tests supply arrays, and because a future change to the
+    relationship should not break this again in the opposite direction.
+  */
+  const locationRow = Array.isArray(row.property_public_locations)
+    ? (row.property_public_locations[0] ?? null)
+    : (row.property_public_locations ?? null);
+
   const testimonialRows = row.property_testimonials ?? [];
 
   /*
@@ -555,6 +574,6 @@ export function mapPropertyRow(row: PropertyJoinedRow): Property {
         }
       : undefined,
     currentStageId: row.current_stage_id ?? undefined,
-    location: mapLocationRow(locationRows[0]),
+    location: mapLocationRow(locationRow ?? undefined),
   };
 }
