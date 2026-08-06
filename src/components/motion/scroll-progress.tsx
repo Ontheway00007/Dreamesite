@@ -85,7 +85,7 @@ export function ScrollProgress() {
       <div
         ref={progressRef}
         className="bg-accent absolute inset-x-0 top-0 h-full origin-top shadow-accent/50 shadow-[0_0_12px]"
-        style={{ scaleY: 0 }}
+        style={{ transform: 'scaleY(0)' }}
       />
     </div>
   );
