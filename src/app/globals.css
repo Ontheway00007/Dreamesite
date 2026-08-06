@@ -288,6 +288,36 @@
     }
   }
 
+  /* Cinematic fade in for page load */
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  /* Breathing pulse for active elements */
+  @keyframes breathe {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.6;
+    }
+  }
+
+  /* Shimmer effect for loading states */
+  @keyframes shimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
   /*
     The selected property arriving beside the map.
 
@@ -345,6 +375,11 @@
   [data-enter-loop="cue"] {
     animation: cue-travel 1.9s var(--ease-luxe) 2s infinite;
   }
+
+  /* Cinematic page entrance */
+  body {
+    animation: fadeIn 0.8s var(--ease-entrance) both;
+  }
 }
 
 /* ==========================================================================
@@ -381,6 +416,96 @@
       transparent 0.5px
     );
     background-size: 3px 3px;
+  }
+}
+
+/* ==========================================================================
+   Mobile-specific enhancements (Phase 7A)
+   Touch-optimized interactions and gesture-friendly design
+   ========================================================================== */
+
+/* Touch target optimization - minimum 44x44px for accessibility */
+@media (max-width: 1023px) {
+  /* Ensure all interactive elements meet minimum touch target */
+  button:not(.touch-optimized-exception),
+  a:not(.touch-optimized-exception),
+  [role="button"]:not(.touch-optimized-exception) {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* Touch feedback - subtle scale on active */
+  @media (prefers-reduced-motion: no-preference) {
+    button:active,
+    a:active,
+    [role="button"]:active {
+      transform: scale(0.98);
+      transition: transform 100ms var(--ease-exit);
+    }
+  }
+}
+
+/* Prevent text selection during swipe gestures */
+@utility prevent-select-on-touch {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Smooth momentum scrolling for mobile */
+@utility momentum-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* Cinematic entrance utilities */
+@utility fade-in-slow {
+  animation: fadeIn var(--duration-cinematic) var(--ease-entrance) both;
+}
+
+@utility fade-in {
+  animation: fadeIn var(--duration-slow) var(--ease-entrance) both;
+}
+
+@utility fade-in-fast {
+  animation: fadeIn var(--duration-base) var(--ease-entrance) both;
+}
+
+/* Shimmer loading effect */
+@utility shimmer {
+  position: relative;
+  overflow: hidden;
+  
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.05),
+      transparent
+    );
+    animation: shimmer 2s infinite;
+  }
+}
+
+/* Remove hover effects on touch devices */
+@media (hover: none) and (pointer: coarse) {
+  /* Disable hover-only animations on touch devices */
+  .hover-desktop-only:hover {
+    transform: none !important;
+    opacity: 1 !important;
+    color: inherit !important;
+  }
+}
+
+/* Mobile-specific spacing adjustments */
+@media (max-width: 639px) {
+  :root {
+    /* Slightly reduce motion duration on small screens */
+    --duration-slow: 480ms;
+    --duration-cinematic: 900ms;
   }
 }
 

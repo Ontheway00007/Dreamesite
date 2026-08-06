@@ -51,6 +51,7 @@ export function MapStage({ properties, summary, token }: MapStageProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<PropertyStatus | null>(null);
   const [resetToken, setResetToken] = useState(0);
+  const [hoveredPropertyId, setHoveredPropertyId] = useState<string | null>(null);
 
   const visibleProperties = useMemo(
     () =>
@@ -99,6 +100,12 @@ export function MapStage({ properties, summary, token }: MapStageProps) {
   }, []);
 
   const hasProperties = properties.length > 0;
+  
+  // Three-way hover reaction: find hovered property details
+  const hoveredProperty = useMemo(
+    () => hoveredPropertyId ? properties.find(p => p.id === hoveredPropertyId) : null,
+    [hoveredPropertyId, properties]
+  );
 
   return (
     <section
@@ -118,6 +125,7 @@ export function MapStage({ properties, summary, token }: MapStageProps) {
             /* The resolved selection, so the map never holds a filtered-out id. */
             selectedId={selected?.id ?? null}
             onSelect={setSelectedId}
+            onHover={setHoveredPropertyId}
             resetToken={resetToken}
             /*
               The status rail already explains what each marker means, and the
@@ -132,33 +140,49 @@ export function MapStage({ properties, summary, token }: MapStageProps) {
       </div>
 
       {/*
-        A vignette so overlaid type stays readable over bright satellite or
-        label-dense areas, without dimming the map as a whole. Pointer events
-        off so it never intercepts a drag.
+        Enhanced vignette that reacts to hover. When a property is hovered,
+        the lighting shifts to draw attention to the interaction.
       */}
       <div
         aria-hidden="true"
-        className="from-background/85 via-background/20 to-background/70 pointer-events-none absolute inset-0 bg-gradient-to-b"
+        className={cn(
+          "pointer-events-none absolute inset-0 bg-gradient-to-b transition-opacity duration-700",
+          hoveredProperty
+            ? "from-background/75 via-background/10 to-background/60"
+            : "from-background/85 via-background/20 to-background/70"
+        )}
       />
       <div
         aria-hidden="true"
-        className="from-background/80 pointer-events-none absolute inset-y-0 left-0 w-full bg-gradient-to-r to-transparent lg:w-2/3"
+        className={cn(
+          "pointer-events-none absolute inset-y-0 left-0 w-full bg-gradient-to-r to-transparent transition-opacity duration-700 lg:w-2/3",
+          hoveredProperty ? "from-background/70 opacity-90" : "from-background/80"
+        )}
       />
 
       {/* ---------------------------------------------------------------- */}
       {/* Brand block — compact, top-left, never centred over the map.     */}
+      {/* Enhanced with three-way hover reaction: typography changes.      */}
       {/* ---------------------------------------------------------------- */}
       <div className="pointer-events-none absolute inset-x-0 top-0 px-5 pt-[calc(var(--header-height)+1.5rem)] sm:px-8 lg:px-12">
         <div className="pointer-events-auto max-w-md">
           <h1
             id="map-stage-heading"
-            className="font-display text-foreground text-[clamp(2.1rem,5vw,3.4rem)] leading-[0.98] tracking-[-0.02em]"
+            className={cn(
+              "font-display text-foreground text-[clamp(2.1rem,5vw,3.4rem)] leading-[0.98] tracking-[-0.02em] transition-all duration-500",
+              hoveredProperty && "scale-[0.98] opacity-80"
+            )}
           >
             Every home.
             <br />
             Every stage.
             <br />
-            <span className="text-foreground-muted">One map.</span>
+            <span className={cn(
+              "text-foreground-muted transition-colors duration-500",
+              hoveredProperty && "text-accent"
+            )}>
+              {hoveredProperty ? hoveredProperty.name : "One map."}
+            </span>
           </h1>
 
           {/*

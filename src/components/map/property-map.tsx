@@ -50,6 +50,8 @@ export interface PropertyMapProps {
   token: string;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
+  /** Callback for hover state changes (three-way reaction system) */
+  onHover?: (id: string | null) => void;
   /** Bumping this value re-fits the camera to the current results. */
   resetToken?: number;
   /**
@@ -82,6 +84,7 @@ export default function PropertyMap({
   token,
   selectedId,
   onSelect,
+  onHover,
   resetToken = 0,
   showLegend = true,
   controlPosition = "top-right",
@@ -90,6 +93,7 @@ export default function PropertyMap({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const selectRef = useRef(onSelect);
+  const hoverRef = useRef(onHover);
   /*
     Read once, during map construction. A ref rather than a dependency so
     changing the prop cannot tear down and rebuild the whole map — the control
@@ -98,6 +102,7 @@ export default function PropertyMap({
   const controlPositionRef = useRef(controlPosition);
   const hoveredIdRef = useRef<string | null>(null);
   const fittedSignatureRef = useRef<string | null>(null);
+  const breathingIntervalRef = useRef<number | null>(null);
 
   const [isReady, setIsReady] = useState(false);
   const [hasError, setHasError] = useState(false);
@@ -124,7 +129,8 @@ export default function PropertyMap({
 
   useEffect(() => {
     selectRef.current = onSelect;
-  }, [onSelect]);
+    hoverRef.current = onHover;
+  }, [onSelect, onHover]);
 
   /** Frames the current results, or the corridor when nothing matches. */
   const fitToResults = useCallback(
@@ -281,20 +287,32 @@ export default function PropertyMap({
           "icon-allow-overlap": true,
         },
         paint: {
-          // Markers ease in with zoom rather than pulsing for attention.
-          "icon-opacity": [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            mapLimits.minZoom,
-            0.7,
-            mapLimits.minZoom + 2,
-            1,
-          ],
+          // Markers start invisible for entrance animation
+          "icon-opacity": 0,
         },
       });
 
       setIsReady(true);
+      
+      // Animate markers entrance after map is ready
+      const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (!prefersReduced) {
+        // Staggered marker entrance with pulse
+        setTimeout(() => {
+          map.setPaintProperty(mapLayers.markers, "icon-opacity", [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            mapLimits.minZoom,
+            0.75,
+            mapLimits.minZoom + 2,
+            1,
+          ]);
+        }, 400);
+      } else {
+        // Immediate appearance for reduced motion
+        map.setPaintProperty(mapLayers.markers, "icon-opacity", 1);
+      }
     };
 
     const onError = (event: { error?: { message?: string } }) => {
@@ -308,6 +326,10 @@ export default function PropertyMap({
       mapRef.current = null;
       fittedSignatureRef.current = null;
       hoveredIdRef.current = null;
+      if (breathingIntervalRef.current) {
+        window.clearInterval(breathingIntervalRef.current);
+        breathingIntervalRef.current = null;
+      }
       // Removing the map detaches every listener, source, layer and image, and
       // releases the WebGL context, so navigating away leaks nothing.
       map.remove();
@@ -333,6 +355,11 @@ export default function PropertyMap({
         ["get", "id"],
         id ?? "__none__",
       ]);
+      
+      // Call the hover callback for three-way reaction
+      if (hoverRef.current) {
+        hoverRef.current(id);
+      }
     };
 
     const onMarkerEnter = (event: MapMouseEvent) => {
@@ -505,6 +532,60 @@ export default function PropertyMap({
 
     return () => observer.disconnect();
   }, [isReady]);
+
+  // Breathing camera movement — subtle organic life
+  useEffect(() => {
+    const map = mapRef.current;
+
+    if (!isReady || !map || selectedId !== null) {
+      return;
+    }
+
+    const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (prefersReduced) {
+      return;
+    }
+
+    // Start breathing after initial fit
+    const startBreathing = setTimeout(() => {
+      const breathe = () => {
+        if (!map || mapRef.current !== map) {
+          return;
+        }
+
+        const center = map.getCenter();
+        const zoom = map.getZoom();
+        
+        // Subtle drift in a circular pattern
+        const angle = Date.now() / 8000; // Slow rotation over 8 seconds
+        const radius = 0.0008; // Very small radius
+        const newCenter: [number, number] = [
+          center.lng + Math.cos(angle) * radius,
+          center.lat + Math.sin(angle) * radius,
+        ];
+        
+        const zoomDelta = Math.sin(Date.now() / 12000) * 0.1; // Gentle zoom breathing
+
+        map.easeTo({
+          center: newCenter,
+          zoom: zoom + zoomDelta * 0.05,
+          duration: 2000,
+          easing: (t) => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t, // ease-in-out
+        });
+      };
+
+      breathe(); // First breath
+      breathingIntervalRef.current = window.setInterval(breathe, 2100);
+    }, 2000); // Wait 2s after load
+
+    return () => {
+      clearTimeout(startBreathing);
+      if (breathingIntervalRef.current) {
+        window.clearInterval(breathingIntervalRef.current);
+        breathingIntervalRef.current = null;
+      }
+    };
+  }, [isReady, selectedId]);
 
   return (
     <div className={cn("relative isolate h-full w-full", className)}>
