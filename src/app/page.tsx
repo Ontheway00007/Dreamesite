@@ -1,9 +1,10 @@
+import { AvailableNow } from "@/components/home/available-now";
+import { DemonstrationNotice } from "@/components/home/demonstration-notice";
 import { MapStage } from "@/components/home/map-stage";
+import { SelectedProjects } from "@/components/home/selected-projects";
 import { EnquirySection } from "@/components/sections/enquiry-section";
-import { FeaturedProperties } from "@/components/sections/featured-properties";
 import { ProcessSection } from "@/components/sections/process-section";
 import { ServiceAreasSection } from "@/components/sections/service-areas-section";
-import { StatusSection } from "@/components/sections/status-section";
 import { getMapboxToken } from "@/lib/map/map-config";
 import { summarisePortfolio } from "@/lib/properties/portfolio-summary";
 import { getProperties } from "@/lib/properties/repository";
@@ -44,8 +45,17 @@ export default async function HomePage() {
     <>
       <MapStage properties={properties} summary={summary} token={token} />
 
-      <FeaturedProperties />
-      <StatusSection />
+      <DemonstrationNotice />
+
+      <SelectedProjects />
+      <AvailableNow />
+
+      {/*
+        Still the Phase 6 sections. `ProcessSection` becomes the scroll-linked
+        construction story and `ServiceAreasSection` becomes the suburb-level
+        portfolio; neither is rebuilt yet, so they stay rather than leaving the
+        page with a gap where that content belongs.
+      */}
       <ProcessSection />
       <ServiceAreasSection />
 

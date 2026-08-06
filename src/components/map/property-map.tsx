@@ -52,6 +52,17 @@ export interface PropertyMapProps {
   onSelect: (id: string | null) => void;
   /** Bumping this value re-fits the camera to the current results. */
   resetToken?: number;
+  /**
+   * The built-in status legend. Off where the surrounding interface already
+   * explains status — the homepage status rail does, and drawing both put the
+   * legend underneath the brand overlay where it was unreadable.
+   */
+  showLegend?: boolean;
+  /**
+   * Where the zoom controls sit. `top-right` collides with the site header on a
+   * full-viewport map, so the homepage moves them to the bottom.
+   */
+  controlPosition?: "top-right" | "bottom-right";
   className?: string;
 }
 
@@ -72,11 +83,19 @@ export default function PropertyMap({
   selectedId,
   onSelect,
   resetToken = 0,
+  showLegend = true,
+  controlPosition = "top-right",
   className,
 }: PropertyMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const selectRef = useRef(onSelect);
+  /*
+    Read once, during map construction. A ref rather than a dependency so
+    changing the prop cannot tear down and rebuild the whole map — the control
+    position is a mount-time decision.
+  */
+  const controlPositionRef = useRef(controlPosition);
   const hoveredIdRef = useRef<string | null>(null);
   const fittedSignatureRef = useRef<string | null>(null);
 
@@ -169,7 +188,7 @@ export default function PropertyMap({
 
     map.addControl(
       new mapboxgl.NavigationControl({ showCompass: false }),
-      "top-right",
+      controlPositionRef.current,
     );
 
     const palette = readMapPalette();
@@ -500,7 +519,7 @@ export default function PropertyMap({
         className="h-full w-full [&_.mapboxgl-ctrl-group]:border-border [&_.mapboxgl-ctrl-group]:bg-surface [&_.mapboxgl-ctrl-group]:border [&_.mapboxgl-ctrl-group_button+button]:border-t-border [&_.mapboxgl-ctrl-group_button]:!bg-transparent [&_.mapboxgl-ctrl-icon]:invert"
       />
 
-      {isReady && !hasError ? (
+      {showLegend && isReady && !hasError ? (
         <MapLegend className="absolute top-4 left-4 z-10" />
       ) : null}
 

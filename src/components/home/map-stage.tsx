@@ -119,6 +119,13 @@ export function MapStage({ properties, summary, token }: MapStageProps) {
             selectedId={selected?.id ?? null}
             onSelect={setSelectedId}
             resetToken={resetToken}
+            /*
+              The status rail already explains what each marker means, and the
+              built-in legend rendered underneath the brand block where it was
+              unreadable. Controls move to the bottom so they clear the header.
+            */
+            showLegend={false}
+            controlPosition="bottom-right"
             className="h-full w-full"
           />
         )}
@@ -208,6 +215,11 @@ export function MapStage({ properties, summary, token }: MapStageProps) {
           <div className="flex items-center justify-between gap-4">
             <PropertyDisclosure properties={properties} />
 
+            {/*
+              The scroll cue sits left of centre rather than bottom-right, where
+              the zoom controls and the Mapbox attribution now live. Attribution
+              is required, so the cue moves rather than the credit.
+            */}
             {hasProperties ? (
               <p
                 aria-hidden="true"
@@ -217,6 +229,7 @@ export function MapStage({ properties, summary, token }: MapStageProps) {
                 <ArrowDown className="size-3.5 motion-safe:animate-bounce" />
               </p>
             ) : null}
+            <span className="hidden lg:block lg:w-40" aria-hidden="true" />
           </div>
         </div>
       </div>
