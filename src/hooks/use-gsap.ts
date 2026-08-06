@@ -23,6 +23,8 @@ export interface GsapScope<T extends HTMLElement> {
   element: T;
   /** GSAP instance, already scoped so selector strings match inside `element`. */
   gsap: typeof gsap;
+  /** True when visitor prefers reduced motion */
+  prefersReduced: boolean;
 }
 
 /**
@@ -47,13 +49,14 @@ export function useGsap<T extends HTMLElement = HTMLDivElement>(
 
   useIsomorphicLayoutEffect(() => {
     const element = ref.current;
+    const prefersReduced = prefersReducedMotion();
 
-    if (!element || prefersReducedMotion()) {
+    if (!element || prefersReduced) {
       return;
     }
 
     const context = gsap.context(() => {
-      setup({ element, gsap });
+      setup({ element, gsap, prefersReduced });
     }, element);
 
     return () => {
