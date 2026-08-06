@@ -57,8 +57,9 @@ export function ScrollProgress() {
       const scrolled = window.scrollY;
       const percent = Math.min((scrolled / scrollHeight) * 100, 100);
 
+      // Use transform instead of scaleY for better TypeScript compatibility
       gsap.to(progress, {
-        scaleY: percent / 100,
+        transform: `scaleY(${percent / 100})`,
         duration: 0.3,
         ease: "power2.out",
       });
