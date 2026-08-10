@@ -59,16 +59,6 @@ export async function AvailableNow() {
       aria-labelledby="available-now-heading"
       className="bg-foreground text-foreground-inverse relative overflow-hidden py-20 lg:py-28"
     >
-      {/* Subtle texture overlay for depth */}
-      <div 
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 opacity-[0.02]"
-        style={{
-          backgroundImage: `radial-gradient(circle at 2px 2px, currentColor 1px, transparent 0)`,
-          backgroundSize: '32px 32px'
-        }}
-      />
-
       <div className="relative mx-auto max-w-[110rem] px-5 sm:px-8 lg:px-12">
         {/* Header with staggered reveal */}
         <div className="flex flex-wrap items-end justify-between gap-6">
