@@ -1,5 +1,3 @@
-"use client";
-
 import { ArrowRight } from "lucide-react";
 
 import { PropertyMedia } from "@/components/property/property-media";
@@ -41,6 +39,16 @@ import type { Property } from "@/types";
  * 
  * Zero available = honest statement + enquiry CTA.
  * Better than silence or fake listings.
+ *
+ * ## Do not add "use client" to this file
+ *
+ * This is an async Server Component. Marking it `"use client"` makes it an
+ * async Client Component, which React does not support: it is re-invoked in a
+ * loop, and because the body awaits `getProperties()`, every iteration issues a
+ * Supabase request from the browser.
+ *
+ * `RevealGroup` and `RevealItem` are already Client Components, and a Server
+ * Component may render one. No directive is needed here to use them.
  */
 export async function AvailableNow() {
   const properties = await getProperties();
