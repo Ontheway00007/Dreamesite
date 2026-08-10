@@ -2,40 +2,8 @@ import {
   propertyStatusOrder,
   propertyStatusTokens,
 } from "@/lib/design/property-status";
+import { StatusGlyph } from "@/components/map/status-glyph";
 import { cn } from "@/lib/utils/cn";
-import type { PropertyStatusToken } from "@/lib/design/property-status";
-
-const TRIANGLE_CLIP = "polygon(50% 0%, 100% 100%, 0% 100%)";
-
-/** Mirrors the canvas-drawn map markers so the silhouettes can be decoded. */
-function LegendSwatch({ token }: { token: PropertyStatusToken }) {
-  if (token.markerShape === "ring") {
-    return (
-      <span
-        className={cn(
-          "size-2.5 shrink-0 rounded-full border-2 border-current",
-          token.textClassName,
-        )}
-        aria-hidden
-      />
-    );
-  }
-
-  return (
-    <span
-      className={cn(
-        "size-2.5 shrink-0",
-        token.swatchClassName,
-        token.markerShape === "circle" && "rounded-full",
-        token.markerShape === "diamond" && "rotate-45",
-      )}
-      style={
-        token.markerShape === "triangle" ? { clipPath: TRIANGLE_CLIP } : undefined
-      }
-      aria-hidden
-    />
-  );
-}
 
 export interface MapLegendProps {
   className?: string;
@@ -65,7 +33,7 @@ export function MapLegend({ className }: MapLegendProps) {
               key={status}
               className="text-foreground-muted flex items-center gap-2.5 text-xs"
             >
-              <LegendSwatch token={token} />
+              <StatusGlyph status={status} className={token.textClassName} />
               {token.label}
             </li>
           );

@@ -41,7 +41,7 @@ export function ServiceAreasSection() {
 
       <div className="mt-16 grid gap-10 lg:mt-24 lg:grid-cols-12 lg:gap-14">
         <div className="lg:col-span-7">
-          <div className="border-border bg-[#d8d0c2] text-foreground-inverse relative aspect-[4/3] overflow-hidden rounded-[2rem] border shadow-raised sm:aspect-[16/10]">
+          <div className="border-border relative aspect-[4/3] overflow-hidden rounded-[2rem] border bg-[#d8d0c2] text-[#050506] shadow-raised sm:aspect-[16/10]">
             <div
               aria-hidden="true"
               className="absolute inset-0 opacity-45"

@@ -6,6 +6,7 @@ import { ArrowDown, ArrowRight, List } from "lucide-react";
 
 import { PropertyMapFallback } from "@/components/map/property-map-fallback";
 import { PropertyMapLoader } from "@/components/map/property-map-loader";
+import { StatusGlyph } from "@/components/map/status-glyph";
 import { propertyStatusTokens } from "@/lib/design/property-status";
 import type { PortfolioSummary } from "@/lib/properties/portfolio-summary";
 import { PROPERTIES_ROUTE, propertyHref } from "@/lib/routes";
@@ -372,66 +373,6 @@ function StatusRail({ summary, active, onToggle, disabled }: StatusRailProps) {
     </div>
   );
 }
-
-function StatusGlyph({
-  status,
-  className,
-}: {
-  status: PropertyStatus;
-  className?: string;
-}) {
-  if (status === "under-construction") {
-    return (
-      <svg
-        aria-hidden="true"
-        viewBox="0 0 16 16"
-        className={cn("size-3 shrink-0", className)}
-      >
-        <path d="M8 1.8 14 13H2L8 1.8Z" fill="none" stroke="currentColor" strokeWidth="1.7" />
-        <path d="M8 5.5v5M5.5 11h5" stroke="currentColor" strokeWidth="1.2" />
-      </svg>
-    );
-  }
-
-  if (status === "completed") {
-    return (
-      <svg
-        aria-hidden="true"
-        viewBox="0 0 16 16"
-        className={cn("size-3 shrink-0", className)}
-      >
-        <path d="m8 1.5 6.5 6.5L8 14.5 1.5 8 8 1.5Z" fill="currentColor" />
-        <path d="M6.6 6.6h2.8v2.8H6.6z" className="fill-background" />
-      </svg>
-    );
-  }
-
-  if (status === "sold") {
-    return (
-      <svg
-        aria-hidden="true"
-        viewBox="0 0 16 16"
-        className={cn("size-3 shrink-0", className)}
-      >
-        <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="1.5" />
-        <circle cx="8" cy="8" r="3.2" fill="none" stroke="currentColor" strokeWidth="1.2" />
-        <path d="M5.5 8h5" stroke="currentColor" strokeWidth="1.2" />
-      </svg>
-    );
-  }
-
-  return (
-    <span
-      aria-hidden="true"
-      className={cn(
-        "relative size-3 shrink-0 rounded-full border border-current before:absolute before:inset-[3px] before:rounded-full before:bg-current",
-        className,
-      )}
-    />
-  );
-}
-
-/* -------------------------------------------------------------------------- */
 
 /**
  * Non-map access to every published property, on this page.

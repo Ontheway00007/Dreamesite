@@ -13,7 +13,7 @@ import type { PropertyStatus } from "@/types";
  * UI: there is no second copy of the palette to keep in sync.
  */
 
-const MARKER_SIZE = 28;
+const MARKER_SIZE = 36;
 const PIXEL_RATIO = 2;
 
 export function markerImageId(status: PropertyStatus): string {
@@ -76,10 +76,34 @@ function drawPolygon(
   context.closePath();
 }
 
+function fillWithAlpha(
+  context: CanvasRenderingContext2D,
+  color: string,
+  alpha: number,
+): void {
+  context.save();
+  context.globalAlpha = alpha;
+  context.fillStyle = color;
+  context.fill();
+  context.restore();
+}
+
+function strokeWithAlpha(
+  context: CanvasRenderingContext2D,
+  color: string,
+  alpha: number,
+): void {
+  context.save();
+  context.globalAlpha = alpha;
+  context.strokeStyle = color;
+  context.stroke();
+  context.restore();
+}
+
 /**
- * Four architectural symbols that still communicate their status without
- * colour: a lit roundel, a segmented frame, a solid plan diamond and a closed
- * double ring.
+ * Four small dimensional objects. Their silhouettes remain different without
+ * colour, while shadows, lit faces and highlights stop the map feeling like a
+ * set of generic flat pins.
  */
 function drawMarker(
   context: CanvasRenderingContext2D,
@@ -90,103 +114,177 @@ function drawMarker(
 ): void {
   const unit = PIXEL_RATIO;
   const center = size / 2;
+  const logicalCenter = 18 * unit;
 
   context.lineCap = "round";
   context.lineJoin = "round";
+  context.shadowColor = "rgba(0, 0, 0, .42)";
+  context.shadowBlur = 4 * unit;
+  context.shadowOffsetY = 2 * unit;
 
   if (status === "move-in-ready") {
+    const shell = context.createLinearGradient(
+      6 * unit,
+      5 * unit,
+      30 * unit,
+      31 * unit,
+    );
+    shell.addColorStop(0, palette.surface);
+    shell.addColorStop(1, palette.background);
+
     context.beginPath();
-    context.arc(center, center, 11 * unit, 0, Math.PI * 2);
-    context.fillStyle = palette.background;
+    context.arc(logicalCenter, logicalCenter, 14 * unit, 0, Math.PI * 2);
+    context.fillStyle = shell;
     context.fill();
+    context.shadowColor = "transparent";
     context.lineWidth = 2 * unit;
     context.strokeStyle = color;
     context.stroke();
 
+    const orb = context.createRadialGradient(
+      14 * unit,
+      13 * unit,
+      0,
+      logicalCenter,
+      logicalCenter,
+      8 * unit,
+    );
+    orb.addColorStop(0, palette.foreground);
+    orb.addColorStop(0.22, color);
+    orb.addColorStop(1, palette.surface);
     context.beginPath();
-    context.arc(center, center, 5 * unit, 0, Math.PI * 2);
-    context.fillStyle = color;
+    context.arc(logicalCenter, logicalCenter, 7 * unit, 0, Math.PI * 2);
+    context.fillStyle = orb;
     context.fill();
     context.beginPath();
-    context.arc(
-      center - 1.5 * unit,
-      center - 1.5 * unit,
-      1.25 * unit,
-      0,
-      Math.PI * 2,
-    );
+    context.arc(15 * unit, 14.5 * unit, 1.5 * unit, 0, Math.PI * 2);
     context.fillStyle = palette.foreground;
     context.fill();
     return;
   }
 
   if (status === "under-construction") {
+    context.save();
+    context.translate(1.8 * unit, 2.5 * unit);
     drawPolygon(context, [
-      [center, 3 * unit],
-      [25 * unit, 24 * unit],
-      [3 * unit, 24 * unit],
+      [logicalCenter, 3 * unit],
+      [33 * unit, 31 * unit],
+      [3 * unit, 31 * unit],
+    ]);
+    fillWithAlpha(context, palette.surface, 0.8);
+    context.restore();
+
+    context.shadowColor = "rgba(0, 0, 0, .38)";
+    drawPolygon(context, [
+      [logicalCenter, 2 * unit],
+      [33 * unit, 30 * unit],
+      [3 * unit, 30 * unit],
     ]);
     context.fillStyle = palette.background;
     context.fill();
+    context.shadowColor = "transparent";
     context.lineWidth = 2 * unit;
     context.strokeStyle = color;
     context.stroke();
 
+    drawPolygon(context, [
+      [logicalCenter, 2 * unit],
+      [33 * unit, 30 * unit],
+      [27 * unit, 27 * unit],
+    ]);
+    fillWithAlpha(context, color, 0.2);
+
     context.beginPath();
-    context.moveTo(center, 8 * unit);
-    context.lineTo(center, 20 * unit);
-    context.moveTo(8 * unit, 21 * unit);
-    context.lineTo(20 * unit, 21 * unit);
-    context.moveTo(10 * unit, 17 * unit);
-    context.lineTo(18 * unit, 17 * unit);
+    context.moveTo(logicalCenter, 7 * unit);
+    context.lineTo(logicalCenter, 25 * unit);
+    context.moveTo(8 * unit, 26 * unit);
+    context.lineTo(28 * unit, 26 * unit);
+    context.moveTo(10 * unit, 21 * unit);
+    context.lineTo(26 * unit, 21 * unit);
+    context.moveTo(12 * unit, 16 * unit);
+    context.lineTo(24 * unit, 16 * unit);
     context.strokeStyle = color;
-    context.lineWidth = 1.5 * unit;
+    context.lineWidth = 1.35 * unit;
     context.stroke();
     return;
   }
 
   if (status === "completed") {
+    context.save();
+    context.translate(1.7 * unit, 2.2 * unit);
     drawPolygon(context, [
-      [center, 2 * unit],
-      [26 * unit, center],
-      [center, 26 * unit],
-      [2 * unit, center],
+      [logicalCenter, 2 * unit],
+      [34 * unit, 16 * unit],
+      [logicalCenter, 34 * unit],
+      [2 * unit, 16 * unit],
     ]);
-    context.fillStyle = palette.background;
-    context.fill();
+    fillWithAlpha(context, palette.surface, 0.78);
+    context.restore();
 
+    context.shadowColor = "rgba(0, 0, 0, .38)";
     drawPolygon(context, [
-      [center, 6 * unit],
-      [22 * unit, center],
-      [center, 22 * unit],
-      [6 * unit, center],
+      [logicalCenter, 1.5 * unit],
+      [34 * unit, 15.5 * unit],
+      [logicalCenter, 34 * unit],
+      [2 * unit, 15.5 * unit],
     ]);
     context.fillStyle = color;
     context.fill();
+    context.shadowColor = "transparent";
+
+    drawPolygon(context, [
+      [logicalCenter, 1.5 * unit],
+      [34 * unit, 15.5 * unit],
+      [logicalCenter, 18.5 * unit],
+      [2 * unit, 15.5 * unit],
+    ]);
+    fillWithAlpha(context, palette.foreground, 0.38);
+
+    drawPolygon(context, [
+      [2 * unit, 15.5 * unit],
+      [logicalCenter, 18.5 * unit],
+      [logicalCenter, 34 * unit],
+    ]);
+    fillWithAlpha(context, palette.background, 0.42);
+
     context.fillStyle = palette.background;
     context.fillRect(
-      center - 2 * unit,
-      center - 2 * unit,
-      4 * unit,
-      4 * unit,
+      center - 2.2 * unit,
+      center - 1.2 * unit,
+      4.4 * unit,
+      5 * unit,
     );
     return;
   }
 
+  const coin = context.createLinearGradient(
+    6 * unit,
+    5 * unit,
+    29 * unit,
+    31 * unit,
+  );
+  coin.addColorStop(0, palette.surface);
+  coin.addColorStop(1, palette.background);
+
   context.beginPath();
-  context.arc(center, center, 11 * unit, 0, Math.PI * 2);
-  context.fillStyle = palette.background;
+  context.arc(logicalCenter, logicalCenter, 14 * unit, 0, Math.PI * 2);
+  context.fillStyle = coin;
   context.fill();
+  context.shadowColor = "transparent";
   context.lineWidth = 2 * unit;
   context.strokeStyle = color;
   context.stroke();
   context.beginPath();
-  context.arc(center, center, 6 * unit, 0, Math.PI * 2);
+  context.arc(logicalCenter, logicalCenter, 9 * unit, 0, Math.PI * 2);
   context.lineWidth = 1.5 * unit;
-  context.stroke();
+  strokeWithAlpha(context, color, 0.82);
   context.beginPath();
-  context.moveTo(9 * unit, center);
-  context.lineTo(19 * unit, center);
+  context.moveTo(10 * unit, logicalCenter);
+  context.lineTo(26 * unit, logicalCenter);
+  context.moveTo(12 * unit, 12 * unit);
+  context.lineTo(24 * unit, 24 * unit);
+  context.lineWidth = 1.7 * unit;
+  context.strokeStyle = color;
   context.stroke();
 }
 

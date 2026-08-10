@@ -14,6 +14,7 @@ import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 
 import { Container } from "@/components/layout/container";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { ENQUIRY_ANCHOR } from "@/lib/routes";
 import { primaryNav } from "@/lib/site-config";
@@ -162,7 +163,7 @@ export function SiteHeader({
     <header
       ref={headerRef}
       className={cn(
-        "fixed inset-x-0 top-0 z-50 bg-[#070708]/95 backdrop-blur-xl transition-[background-color,border-color] duration-(--duration-base) ease-luxe",
+        "bg-background/95 fixed inset-x-0 top-0 z-50 backdrop-blur-xl transition-[background-color,border-color] duration-(--duration-base) ease-luxe",
         isScrolled || isOpen
           ? "border-border border-b shadow-soft"
           : "border-b border-transparent",
@@ -177,7 +178,7 @@ export function SiteHeader({
           {companyName}
         </Link>
 
-        <nav aria-label="Primary" className="hidden items-center gap-9 md:flex">
+        <nav aria-label="Primary" className="hidden items-center gap-8 xl:flex">
           {primaryNav.map((link) => (
             <Link
               key={link.href}
@@ -190,27 +191,30 @@ export function SiteHeader({
           ))}
         </nav>
 
-        <div className="hidden md:block">
-          <Button href={contactHref} variant="outline" size="sm">
-            Contact us
-          </Button>
-        </div>
+        <div className="flex items-center gap-2.5">
+          <ThemeToggle />
+          <div className="hidden xl:block">
+            <Button href={contactHref} variant="outline" size="sm">
+              Contact us
+            </Button>
+          </div>
 
-        <button
-          ref={toggleRef}
-          type="button"
-          onClick={() => (isOpen ? close(true) : setIsOpen(true))}
-          aria-expanded={isOpen}
-          aria-controls="mobile-navigation"
-          aria-label={isOpen ? "Close menu" : "Open menu"}
-          className="text-foreground -mr-2 inline-flex size-10 items-center justify-center rounded-full md:hidden"
-        >
-          {isOpen ? (
-            <X size={20} aria-hidden />
-          ) : (
-            <Menu size={20} aria-hidden />
-          )}
-        </button>
+          <button
+            ref={toggleRef}
+            type="button"
+            onClick={() => (isOpen ? close(true) : setIsOpen(true))}
+            aria-expanded={isOpen}
+            aria-controls="mobile-navigation"
+            aria-label={isOpen ? "Close menu" : "Open menu"}
+            className="text-foreground -mr-2 inline-flex size-10 items-center justify-center rounded-full xl:hidden"
+          >
+            {isOpen ? (
+              <X size={20} aria-hidden />
+            ) : (
+              <Menu size={20} aria-hidden />
+            )}
+          </button>
+        </div>
       </Container>
 
       <div
@@ -219,7 +223,7 @@ export function SiteHeader({
         inert={!isOpen}
         data-lenis-prevent
         className={cn(
-          "border-border bg-background/98 absolute inset-x-0 top-full h-[calc(100dvh-var(--header-height))] overflow-y-auto border-t backdrop-blur-xl transition-[opacity,transform] duration-(--duration-base) ease-luxe md:hidden",
+          "border-border bg-background/98 absolute inset-x-0 top-full h-[calc(100dvh-var(--header-height))] overflow-y-auto border-t backdrop-blur-xl transition-[opacity,transform] duration-(--duration-base) ease-luxe xl:hidden",
           isOpen
             ? "translate-y-0 opacity-100"
             : "pointer-events-none -translate-y-3 opacity-0",

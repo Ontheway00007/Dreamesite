@@ -32,6 +32,7 @@ import {
 } from "@/lib/map/marker-images";
 import { isMappable } from "@/lib/properties/privacy";
 import { cn } from "@/lib/utils/cn";
+import { isSiteTheme } from "@/lib/theme";
 import type { Property } from "@/types";
 
 /** Camera easing, skipped entirely for visitors who prefer reduced motion. */
@@ -121,6 +122,7 @@ export default function PropertyMap({
   }, []);
 
   const geoJson = useMemo(() => propertiesToGeoJson(properties), [properties]);
+  const geoJsonRef = useRef(geoJson);
   const bounds = useMemo(() => boundsOfProperties(properties), [properties]);
   const signature = useMemo(
     () => geoJson.features.map((feature) => feature.id).join("|"),
@@ -130,7 +132,8 @@ export default function PropertyMap({
   useEffect(() => {
     selectRef.current = onSelect;
     hoverRef.current = onHover;
-  }, [onSelect, onHover]);
+    geoJsonRef.current = geoJson;
+  }, [onSelect, onHover, geoJson]);
 
   /** Frames the current results, or the corridor when nothing matches. */
   const fitToResults = useCallback(
@@ -174,12 +177,19 @@ export default function PropertyMap({
     }
 
     let map: mapboxgl.Map;
+    let markerEntranceFrame = 0;
+    let markerEntranceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const currentTheme = () => {
+      const theme = document.documentElement.dataset.theme;
+      return isSiteTheme(theme) ? theme : "dark";
+    };
 
     try {
       map = new mapboxgl.Map({
         accessToken: token,
         container,
-        style: getMapStyle(),
+        style: getMapStyle(currentTheme()),
         bounds: NORTHERN_CORRIDOR_BOUNDS,
         fitBoundsOptions: { padding: mapLimits.fitPadding },
         minZoom: mapLimits.minZoom,
@@ -197,13 +207,13 @@ export default function PropertyMap({
       controlPositionRef.current,
     );
 
-    const palette = readMapPalette();
-    const availabilityColor = readCssColor(
-      "--status-move-in-ready",
-      palette.accent,
-    );
-
     const onStyleLoad = () => {
+      const palette = readMapPalette();
+      const availabilityColor = readCssColor(
+        "--status-move-in-ready",
+        palette.accent,
+      );
+
       for (const { id, image } of createMarkerImages(palette)) {
         if (!map.hasImage(id)) {
           map.addImage(id, image, { pixelRatio: markerImagePixelRatio });
@@ -212,7 +222,7 @@ export default function PropertyMap({
 
       map.addSource(mapSource.properties, {
         type: "geojson",
-        data: emptyFeatureCollection,
+        data: geoJsonRef.current ?? emptyFeatureCollection,
         cluster: true,
         clusterRadius: clusterConfig.radius,
         clusterMaxZoom: clusterConfig.maxZoom,
@@ -285,12 +295,29 @@ export default function PropertyMap({
           ["==", ["get", "status"], "move-in-ready"],
         ],
         paint: {
-          "circle-radius": 14,
+          "circle-radius": 17,
           "circle-color": availabilityColor,
-          "circle-opacity": 0.12,
-          "circle-stroke-width": 1,
+          "circle-opacity": 0.16,
+          "circle-stroke-width": 1.5,
           "circle-stroke-color": availabilityColor,
-          "circle-stroke-opacity": 0.28,
+          "circle-stroke-opacity": 0.42,
+        },
+      });
+
+      map.addLayer({
+        id: mapLayers.activityCore,
+        type: "circle",
+        source: mapSource.properties,
+        filter: [
+          "all",
+          ["!", ["has", "point_count"]],
+          ["==", ["get", "status"], "move-in-ready"],
+        ],
+        paint: {
+          "circle-radius": 11,
+          "circle-color": availabilityColor,
+          "circle-opacity": 0.16,
+          "circle-blur": 0.45,
         },
       });
 
@@ -310,6 +337,7 @@ export default function PropertyMap({
             markerImageId("completed"),
           ],
           "icon-allow-overlap": true,
+          "icon-size": 0.74,
         },
         paint: {
           // Markers start invisible for entrance animation
@@ -319,23 +347,44 @@ export default function PropertyMap({
 
       setIsReady(true);
       
-      // Animate markers entrance after map is ready
+      // The dimensional markers settle into the map rather than popping in.
       const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       if (!prefersReduced) {
-        // Staggered marker entrance with pulse
-        setTimeout(() => {
-          map.setPaintProperty(mapLayers.markers, "icon-opacity", [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            mapLimits.minZoom,
-            0.75,
-            mapLimits.minZoom + 2,
-            1,
-          ]);
-        }, 400);
+        if (markerEntranceTimer) {
+          clearTimeout(markerEntranceTimer);
+        }
+        cancelAnimationFrame(markerEntranceFrame);
+        markerEntranceTimer = setTimeout(() => {
+          const startedAt = performance.now();
+          const enter = (now: number) => {
+            if (!map.getLayer(mapLayers.markers)) {
+              return;
+            }
+
+            const raw = Math.min(
+              Math.max((now - startedAt) / 820, 0),
+              1,
+            );
+            const progress = 1 - Math.pow(1 - raw, 3);
+            map.setLayoutProperty(
+              mapLayers.markers,
+              "icon-size",
+              0.74 + progress * 0.26,
+            );
+            map.setPaintProperty(
+              mapLayers.markers,
+              "icon-opacity",
+              progress,
+            );
+
+            if (raw < 1) {
+              markerEntranceFrame = requestAnimationFrame(enter);
+            }
+          };
+          markerEntranceFrame = requestAnimationFrame(enter);
+        }, 220);
       } else {
-        // Immediate appearance for reduced motion
+        map.setLayoutProperty(mapLayers.markers, "icon-size", 1);
         map.setPaintProperty(mapLayers.markers, "icon-opacity", 1);
       }
     };
@@ -347,7 +396,25 @@ export default function PropertyMap({
     map.on("style.load", onStyleLoad);
     map.on("error", onError);
 
+    const themeObserver = new MutationObserver((mutations) => {
+      if (!mutations.some((mutation) => mutation.attributeName === "data-theme")) {
+        return;
+      }
+
+      setIsReady(false);
+      map.setStyle(getMapStyle(currentTheme()));
+    });
+    themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
+
     return () => {
+      themeObserver.disconnect();
+      if (markerEntranceTimer) {
+        clearTimeout(markerEntranceTimer);
+      }
+      cancelAnimationFrame(markerEntranceFrame);
       mapRef.current = null;
       fittedSignatureRef.current = null;
       hoveredIdRef.current = null;
@@ -559,39 +626,60 @@ export default function PropertyMap({
   useEffect(() => {
     const map = mapRef.current;
 
-    if (!isReady || !map || !map.getLayer(mapLayers.activity)) {
+    if (
+      !isReady ||
+      !map ||
+      !map.getLayer(mapLayers.activity) ||
+      !map.getLayer(mapLayers.activityCore)
+    ) {
       return;
     }
 
     const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (prefersReduced || selectedId !== null) {
-      map.setPaintProperty(mapLayers.activity, "circle-radius", 14);
-      map.setPaintProperty(mapLayers.activity, "circle-opacity", 0.08);
-      map.setPaintProperty(mapLayers.activity, "circle-stroke-opacity", 0.2);
+      map.setPaintProperty(mapLayers.activity, "circle-radius", 17);
+      map.setPaintProperty(mapLayers.activity, "circle-opacity", 0.1);
+      map.setPaintProperty(mapLayers.activity, "circle-stroke-opacity", 0.28);
+      map.setPaintProperty(mapLayers.activityCore, "circle-radius", 11);
+      map.setPaintProperty(mapLayers.activityCore, "circle-opacity", 0.14);
       return;
     }
 
     let animationFrame = 0;
     const animate = (time: number) => {
-      if (mapRef.current !== map) {
+      if (
+        mapRef.current !== map ||
+        !map.getLayer(mapLayers.activity) ||
+        !map.getLayer(mapLayers.activityCore)
+      ) {
         return;
       }
 
-      const progress = (Math.sin(time / 900 - Math.PI / 2) + 1) / 2;
+      const progress = (Math.sin(time / 700 - Math.PI / 2) + 1) / 2;
       map.setPaintProperty(
         mapLayers.activity,
         "circle-radius",
-        14 + progress * 9,
+        17 + progress * 17,
       );
       map.setPaintProperty(
         mapLayers.activity,
         "circle-opacity",
-        0.18 * (1 - progress),
+        0.24 * (1 - progress),
       );
       map.setPaintProperty(
         mapLayers.activity,
         "circle-stroke-opacity",
-        0.42 * (1 - progress),
+        0.68 * (1 - progress),
+      );
+      map.setPaintProperty(
+        mapLayers.activityCore,
+        "circle-radius",
+        10.5 + (1 - progress) * 2.5,
+      );
+      map.setPaintProperty(
+        mapLayers.activityCore,
+        "circle-opacity",
+        0.1 + (1 - progress) * 0.16,
       );
       animationFrame = window.requestAnimationFrame(animate);
     };

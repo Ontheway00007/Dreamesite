@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 
 import { Cormorant_Garamond, Inter } from "next/font/google";
+import Script from "next/script";
 
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
@@ -10,6 +11,11 @@ import { organisationSchema } from "@/lib/seo/structured-data";
 import { env } from "@/lib/env";
 import { getPublicSettings } from "@/lib/settings/public-settings";
 import { siteConfig } from "@/lib/site-config";
+import {
+  DEFAULT_SITE_THEME,
+  THEME_STORAGE_KEY,
+  themeColor,
+} from "@/lib/theme";
 import { AppProviders } from "@/providers/app-providers";
 
 import "./globals.css";
@@ -82,9 +88,11 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export const viewport: Viewport = {
-  colorScheme: "dark",
-  themeColor: "#050506",
+  colorScheme: "dark light",
+  themeColor: themeColor[DEFAULT_SITE_THEME],
 };
+
+const themeBootstrap = `(function(){try{var t=localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)});if(t!=="light"&&t!=="dark")t=${JSON.stringify(DEFAULT_SITE_THEME)};var r=document.documentElement;r.setAttribute("data-theme",t);r.style.colorScheme=t;var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",t==="light"?${JSON.stringify(themeColor.light)}:${JSON.stringify(themeColor.dark)})}catch(e){}})()`;
 
 export default async function RootLayout({
   children,
@@ -94,8 +102,16 @@ export default async function RootLayout({
   const settings = await getPublicSettings();
 
   return (
-    <html lang="en-AU" className={`${inter.variable} ${cormorant.variable}`}>
+    <html
+      lang="en-AU"
+      data-theme={DEFAULT_SITE_THEME}
+      suppressHydrationWarning
+      className={`${inter.variable} ${cormorant.variable}`}
+    >
       <body className="grain min-h-dvh antialiased">
+        <Script id="dreame-theme" strategy="beforeInteractive">
+          {themeBootstrap}
+        </Script>
         {/*
           The business, once, on every page. Search engines resolve the `@id`
           reference each property page makes to it, so a property does not have

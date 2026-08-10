@@ -64,7 +64,7 @@ export async function AvailableNow() {
         {/* Header with staggered reveal */}
         <div className="flex flex-wrap items-end justify-between gap-6">
           <div className="max-w-2xl">
-            <p className="text-[0.7rem] tracking-[0.22em] uppercase text-black/55 motion-safe:animate-[fadeIn_0.6s_var(--ease-entrance)_0.2s_both]">
+            <p className="text-foreground-inverse/55 text-[0.7rem] tracking-[0.22em] uppercase motion-safe:animate-[fadeIn_0.6s_var(--ease-entrance)_0.2s_both]">
               Ready to inspect
             </p>
             <h2
@@ -78,7 +78,7 @@ export async function AvailableNow() {
           </div>
 
           {available.length > 0 ? (
-            <p className="max-w-sm text-sm leading-relaxed text-black/65 motion-safe:animate-[fadeIn_0.6s_var(--ease-entrance)_0.4s_both]">
+            <p className="text-foreground-inverse/65 max-w-sm text-sm leading-relaxed motion-safe:animate-[fadeIn_0.6s_var(--ease-entrance)_0.4s_both]">
               {available.length === 1
                 ? "One home is finished and ready to walk through."
                 : `${available.length} homes are finished and ready to walk through.`}
@@ -88,20 +88,20 @@ export async function AvailableNow() {
 
         {/* Empty state with refined interaction */}
         {available.length === 0 ? (
-          <div className="mt-10 max-w-2xl border-t border-black/15 pt-8 motion-safe:animate-[fadeIn_0.6s_var(--ease-entrance)_0.5s_both]">
-            <p className="text-base leading-relaxed text-black/70">
+          <div className="border-foreground-inverse/15 mt-10 max-w-2xl border-t pt-8 motion-safe:animate-[fadeIn_0.6s_var(--ease-entrance)_0.5s_both]">
+            <p className="text-foreground-inverse/70 text-base leading-relaxed">
               Every home we have built is either still on site or already handed
               over. Tell us the suburb and timeframe you are considering and we
               will let you know the moment something is ready.
             </p>
             <a
               href={ENQUIRY_ANCHOR}
-              className="focus-visible:ring-ring group relative mt-6 inline-flex items-center gap-2 overflow-hidden rounded-lg bg-black px-5 py-3 text-sm font-medium text-white transition-all hover:gap-3 focus-visible:ring-2 focus-visible:outline-none"
+              className="focus-visible:ring-ring bg-foreground-inverse text-foreground group relative mt-6 inline-flex items-center gap-2 overflow-hidden rounded-lg px-5 py-3 text-sm font-medium transition-all hover:gap-3 focus-visible:ring-2 focus-visible:outline-none"
             >
               {/* Hover background that slides in */}
               <span 
                 aria-hidden="true"
-                className="absolute inset-0 translate-x-[-100%] bg-gradient-to-r from-black to-black/90 transition-transform duration-500 motion-safe:group-hover:translate-x-0"
+                className="from-foreground-inverse to-foreground-inverse/90 absolute inset-0 translate-x-[-100%] bg-gradient-to-r transition-transform duration-500 motion-safe:group-hover:translate-x-0"
               />
               <span className="relative">Tell us what you are after</span>
               <ArrowRight
@@ -158,7 +158,7 @@ function AvailableCard({
         {/* Photography container with purposeful border pulse */}
         <div
           className={cn(
-            "relative w-full overflow-hidden rounded-xl bg-black/5 shadow-soft ring-1 ring-black/5 transition-all duration-700",
+            "bg-foreground-inverse/5 ring-foreground-inverse/5 relative w-full overflow-hidden rounded-xl shadow-soft ring-1 transition-all duration-700",
             // Border pulses to accent on hover = "active, available"
             "motion-safe:group-hover:ring-2 motion-safe:group-hover:ring-accent/40 motion-safe:group-hover:shadow-[0_8px_32px_-8px_rgba(194,147,91,0.3)]",
             featured ? "aspect-16/9 lg:aspect-[2.6/1]" : "aspect-4/3"
@@ -181,14 +181,14 @@ function AvailableCard({
           {/* Subtle gradient overlay that shifts on hover */}
           <div
             aria-hidden="true"
-            className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent opacity-100 transition-opacity duration-700 motion-safe:group-hover:opacity-0"
+            className="from-foreground-inverse/10 absolute inset-0 bg-gradient-to-t to-transparent opacity-100 transition-opacity duration-700 motion-safe:group-hover:opacity-0"
           />
         </div>
 
         {/* Content with staggered micro-interactions */}
         <div className="mt-5 flex flex-wrap items-start justify-between gap-4">
           <div className="transition-transform duration-500 motion-safe:group-hover:-translate-y-0.5">
-            <p className="text-[0.7rem] tracking-[0.18em] uppercase text-black/55 transition-colors duration-300 motion-safe:group-hover:text-black/70">
+            <p className="text-foreground-inverse/55 motion-safe:group-hover:text-foreground-inverse/70 text-[0.7rem] tracking-[0.18em] uppercase transition-colors duration-300">
               {property.suburb}
               {property.state ? `, ${property.state}` : ""}
             </p>
@@ -199,13 +199,13 @@ function AvailableCard({
 
           {/* Price with purposeful highlight = "commercial intent" */}
           {priceLabel ? (
-            <div className="relative shrink-0 overflow-hidden rounded-md bg-black/5 px-3 py-1.5 transition-all duration-500 motion-safe:group-hover:bg-accent/10 motion-safe:group-hover:-translate-y-0.5">
+            <div className="bg-foreground-inverse/5 relative shrink-0 overflow-hidden rounded-md px-3 py-1.5 transition-all duration-500 motion-safe:group-hover:-translate-y-0.5 motion-safe:group-hover:bg-accent/10">
               {/* Animated underline that reveals on hover */}
               <span 
                 aria-hidden="true"
                 className="absolute inset-x-0 bottom-0 h-0.5 translate-x-[-100%] bg-accent transition-transform duration-500 motion-safe:group-hover:translate-x-0"
               />
-              <p className="relative text-sm font-medium text-black/80 transition-colors duration-300 motion-safe:group-hover:text-black">
+              <p className="text-foreground-inverse/80 motion-safe:group-hover:text-foreground-inverse relative text-sm font-medium transition-colors duration-300">
                 {priceLabel}
               </p>
             </div>
@@ -213,25 +213,25 @@ function AvailableCard({
         </div>
 
         {/* Summary with subtle fade */}
-        <p className="mt-3 max-w-xl text-sm leading-relaxed text-black/65 transition-all duration-300 motion-safe:group-hover:text-black/80">
+        <p className="text-foreground-inverse/65 motion-safe:group-hover:text-foreground-inverse/80 mt-3 max-w-xl text-sm leading-relaxed transition-all duration-300">
           {property.summary}
         </p>
 
         {/* Specs and CTA with choreographed reveal */}
-        <div className="mt-5 flex flex-wrap items-center gap-6 border-t border-black/12 pt-5 transition-all duration-500 motion-safe:group-hover:border-black/20">
+        <div className="border-foreground-inverse/12 motion-safe:group-hover:border-foreground-inverse/20 mt-5 flex flex-wrap items-center gap-6 border-t pt-5 transition-all duration-500">
           {/* Specs slide in from left = "precise measurements" */}
           <div className="transition-all duration-500 motion-safe:group-hover:translate-x-1">
             <PropertySpecs
               property={property}
               size="sm"
               includeHouseSize
-              className="[&_*]:!text-black/70 [&_*]:transition-colors [&_*]:duration-300 motion-safe:group-hover:[&_*]:!text-black/90"
+              className="[&_*]:!text-foreground-inverse/70 [&_*]:transition-colors [&_*]:duration-300 motion-safe:group-hover:[&_*]:!text-foreground-inverse/90"
             />
           </div>
 
           {/* CTA with extending arrow = "clear path forward" */}
           <span className="inline-flex items-center gap-2 text-sm font-medium transition-all duration-300 motion-safe:group-hover:gap-3">
-            <span className="transition-colors duration-300 motion-safe:group-hover:text-black">
+            <span className="motion-safe:group-hover:text-foreground-inverse transition-colors duration-300">
               Explore this home
             </span>
             <ArrowRight

@@ -76,9 +76,50 @@
   --shadow-raised: 0 2px 4px rgb(0 0 0 / 0.45), 0 24px 60px -24px rgb(0 0 0 / 0.75);
   --shadow-accent: 0 18px 60px -24px color-mix(in oklab, var(--palette-brass) 55%, transparent);
 
+  --grain-color: var(--palette-bone);
+  --blueprint-line: color-mix(in oklab, var(--palette-linen) 7%, transparent);
+
   /* --- Layout ----------------------------------------------------------- */
   --container-gutter: 1.25rem;
   --header-height: 4.5rem;
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+
+  /* Warm daylight, not a generic white UI. */
+  --background: #f3efe7;
+  --background-alt: #ebe4d9;
+  --surface: #e4dbcf;
+  --surface-raised: #fffaf2;
+  --surface-overlay: color-mix(in oklab, #fffaf2 86%, transparent);
+
+  --border: color-mix(in oklab, #211e1a 14%, transparent);
+  --border-strong: color-mix(in oklab, #211e1a 25%, transparent);
+
+  --foreground: #211e1a;
+  --foreground-muted: #5d554b;
+  --foreground-subtle: #7c7165;
+  --foreground-inverse: #f8f4ec;
+
+  --accent: #9c6737;
+  --accent-strong: #75471f;
+  --accent-foreground: #fffaf2;
+  --accent-soft: color-mix(in oklab, #9c6737 16%, transparent);
+
+  --status-move-in-ready: #527653;
+  --status-under-construction: #a86812;
+  --status-completed: #56666c;
+  --status-sold: #9d5145;
+
+  --ring: color-mix(in oklab, #9c6737 72%, transparent);
+
+  --shadow-soft: 0 1px 2px rgb(43 34 24 / 0.09), 0 12px 32px -18px rgb(43 34 24 / 0.2);
+  --shadow-raised: 0 2px 5px rgb(43 34 24 / 0.1), 0 26px 70px -30px rgb(43 34 24 / 0.28);
+  --shadow-accent: 0 18px 60px -24px color-mix(in oklab, #9c6737 38%, transparent);
+
+  --grain-color: #211e1a;
+  --blueprint-line: color-mix(in oklab, #211e1a 7%, transparent);
 }
 
 @media (min-width: 48rem) {
@@ -185,6 +226,13 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+  }
+
+  html,
+  body {
+    transition:
+      background-color var(--duration-slow) var(--ease-luxe),
+      color var(--duration-base) var(--ease-luxe);
   }
 
   ::selection {
@@ -308,6 +356,43 @@
     }
   }
 
+  @keyframes status-ready {
+    0%, 100% { transform: translateY(0) scale(1); filter: drop-shadow(0 0 0 transparent); }
+    50% { transform: translateY(-0.05rem) scale(1.08); filter: drop-shadow(0 0 0.28rem currentColor); }
+  }
+
+  @keyframes status-build {
+    0%, 100% { transform: rotate(-1.5deg) translateY(0); }
+    50% { transform: rotate(1.5deg) translateY(-0.08rem); }
+  }
+
+  @keyframes status-complete {
+    0%, 72%, 100% { transform: rotate(0) scale(1); filter: brightness(1); }
+    82% { transform: rotate(2deg) scale(1.045); filter: brightness(1.22); }
+  }
+
+  @keyframes status-sold {
+    0%, 78%, 100% { transform: rotate(0) scale(1); }
+    84% { transform: rotate(-3deg) scale(0.96); }
+    90% { transform: rotate(1deg) scale(1.03); }
+  }
+
+  .status-glyph[data-status="move-in-ready"] {
+    animation: status-ready 3.4s ease-in-out infinite;
+  }
+
+  .status-glyph[data-status="under-construction"] {
+    animation: status-build 4.2s ease-in-out infinite;
+  }
+
+  .status-glyph[data-status="completed"] {
+    animation: status-complete 5.8s var(--ease-luxe) infinite;
+  }
+
+  .status-glyph[data-status="sold"] {
+    animation: status-sold 6.4s var(--ease-luxe) infinite;
+  }
+
   /* Shimmer effect for loading states */
   @keyframes shimmer {
     0% {
@@ -392,7 +477,6 @@
 
 /* Architectural set-out grid used behind the hero. */
 @utility blueprint-grid {
-  --blueprint-line: color-mix(in oklab, var(--palette-linen) 7%, transparent);
   background-image:
     linear-gradient(to right, var(--blueprint-line) 1px, transparent 1px),
     linear-gradient(to bottom, var(--blueprint-line) 1px, transparent 1px);
@@ -412,10 +496,54 @@
     pointer-events: none;
     opacity: 0.035;
     background-image: radial-gradient(
-      var(--palette-bone) 0.5px,
+      var(--grain-color) 0.5px,
       transparent 0.5px
     );
     background-size: 3px 3px;
+  }
+}
+
+.theme-toggle__sun,
+.theme-toggle__moon {
+  transition:
+    opacity var(--duration-base) var(--ease-luxe),
+    transform var(--duration-base) var(--ease-luxe);
+}
+
+.theme-toggle__sun {
+  opacity: 0;
+  transform: rotate(-55deg) scale(0.6);
+}
+
+.theme-toggle__moon {
+  opacity: 1;
+  transform: rotate(0) scale(1);
+}
+
+html[data-theme="light"] .theme-toggle__sun {
+  opacity: 1;
+  transform: rotate(0) scale(1);
+}
+
+html[data-theme="light"] .theme-toggle__moon {
+  opacity: 0;
+  transform: rotate(55deg) scale(0.6);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 520ms;
+    animation-timing-function: var(--ease-luxe);
+  }
+
+  ::view-transition-old(root) {
+    animation-name: enter-fade;
+    animation-direction: reverse;
+  }
+
+  ::view-transition-new(root) {
+    animation-name: enter-fade;
   }
 }
 
