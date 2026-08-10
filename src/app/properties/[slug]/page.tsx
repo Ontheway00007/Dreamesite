@@ -79,18 +79,20 @@ export async function generateMetadata({
 
 /** Section wrapper, so the rhythm of the page is defined in one place. */
 function DetailSection({
+  id,
   eyebrow,
   title,
   description,
   children,
 }: {
+  id?: string;
   eyebrow: string;
   title: string;
   description?: string;
   children: React.ReactNode;
 }) {
   return (
-    <section className="border-border border-t py-14 md:py-20">
+    <section id={id} className="border-border scroll-mt-28 border-t py-14 md:py-20">
       <Reveal>
         <Eyebrow>{eyebrow}</Eyebrow>
         <Heading level={3} as="h2" className="mt-4">
@@ -239,6 +241,7 @@ export default async function PropertyPage({ params }: PropertyPageProps) {
       {/* The enquiry is attached to this property, so the admin list shows
           which home was being asked about rather than just "website". */}
       <DetailSection
+        id="property-enquiry"
         eyebrow="Enquire"
         title="Ask us anything about this home."
         description="Send through your questions and timeframe, and our team will reply with the detail you need — including location and availability."

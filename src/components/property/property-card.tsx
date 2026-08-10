@@ -56,7 +56,7 @@ export function PropertyCard({
 
         {property.heroImage ? null : (
           <span className="text-foreground-subtle absolute right-5 bottom-4 text-[0.625rem] font-medium tracking-[0.2em] uppercase">
-            Architectural preview
+            Material study
           </span>
         )}
       </div>

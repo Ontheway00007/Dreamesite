@@ -36,10 +36,17 @@ export function PropertySpecs({
     { icon: BedDouble, value: `${property.bedrooms}`, label: "bedrooms" },
     { icon: Bath, value: `${property.bathrooms}`, label: "bathrooms" },
     { icon: Car, value: `${property.carSpaces}`, label: "car spaces" },
-    { icon: Ruler, value: `${property.landSize} m²`, label: "land size" },
   ];
 
-  if (includeHouseSize && property.houseSize) {
+  if (property.landSize > 0) {
+    specs.push({
+      icon: Ruler,
+      value: `${property.landSize} m²`,
+      label: "land size",
+    });
+  }
+
+  if (includeHouseSize && property.houseSize && property.houseSize > 0) {
     specs.push({
       icon: Ruler,
       value: `${property.houseSize} m² internal`,

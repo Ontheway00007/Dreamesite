@@ -46,7 +46,7 @@ export function PropertyShowcase({ property }: PropertyShowcaseProps) {
               <ArchitecturalFrame variant={visual.placeholderVariant} />
             </div>
             <figcaption className="text-foreground-subtle absolute right-6 bottom-5 text-[0.625rem] font-medium tracking-[0.2em] uppercase">
-              Architectural preview
+              Material study
             </figcaption>
           </>
         )}

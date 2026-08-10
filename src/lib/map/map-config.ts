@@ -53,6 +53,7 @@ export const mapSource = {
 export const mapLayers = {
   clusters: "dreame-clusters",
   clusterCount: "dreame-cluster-count",
+  activity: "dreame-property-availability",
   markers: "dreame-property-markers",
   hovered: "dreame-property-hovered",
   selected: "dreame-property-selected",

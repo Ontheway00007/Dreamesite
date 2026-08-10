@@ -5,6 +5,7 @@ import { ArrowRight, X } from "lucide-react";
 import { PropertyMedia } from "@/components/property/property-media";
 import { PropertySpecs } from "@/components/property/property-specs";
 import { StatusBadge } from "@/components/property/status-badge";
+import { publicPriceLabel } from "@/lib/properties/display";
 import { propertyHref } from "@/lib/routes";
 import { cn } from "@/lib/utils/cn";
 import type { Property } from "@/types";
@@ -42,6 +43,7 @@ export function MapPropertyPanel({
   className,
 }: MapPropertyPanelProps) {
   const { address, label } = property.location;
+  const priceLabel = publicPriceLabel(property.priceDisplay);
 
   /*
     Address and label are already privacy-projected: `address` is whatever the
@@ -118,12 +120,12 @@ export function MapPropertyPanel({
           absent price is left absent rather than filled with "Contact us",
           which reads as a price the way a blank does not.
         */}
-        {property.priceDisplay || property.completionLabel ? (
+        {priceLabel || property.completionLabel ? (
           <dl className="border-border grid gap-2 border-t pt-4 text-sm">
-            {property.priceDisplay ? (
+            {priceLabel ? (
               <div className="flex justify-between gap-4">
                 <dt className="text-foreground-subtle">Price</dt>
-                <dd className="text-foreground">{property.priceDisplay}</dd>
+                <dd className="text-foreground">{priceLabel}</dd>
               </div>
             ) : null}
             {property.completionLabel ? (

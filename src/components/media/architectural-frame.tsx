@@ -2,54 +2,72 @@ import { cn } from "@/lib/utils/cn";
 import type { ArchitecturalVariant } from "@/types";
 
 /**
- * Architectural line drawings used in place of photography.
- *
- * These are deliberately drawn, not stock imagery: an elevation sketch reads as
- * an intentional placeholder rather than a stand-in for a real home. Swap them
- * out per property by choosing a hero image in the admin media manager.
+ * Abstract material compositions used when photography has not been supplied.
+ * They suggest mass, rhythm and light without depicting a fictional façade.
+ * The legacy component name is retained to avoid changing stored variant data.
  */
 const variants: Record<ArchitecturalVariant, React.ReactNode> = {
   "single-storey": (
     <>
-      <path d="M140 250 L255 178 H545 L660 250" />
-      <path d="M120 250 H680" />
-      <path d="M170 250 V430 H630 V250" />
-      <path d="M205 296 H285 V356 H205 Z M245 296 V356" />
-      <path d="M310 296 H370 V356 H310 Z" />
-      <path d="M392 322 H448 V430 H392 Z" />
-      <path d="M478 316 H630 V430" />
-      <path d="M506 316 V430 M534 316 V430 M562 316 V430 M590 316 V430" />
+      <polygon
+        points="80,390 520,135 735,245 278,482"
+        fill="currentColor"
+        opacity="0.12"
+      />
+      <rect
+        x="155"
+        y="92"
+        width="205"
+        height="318"
+        rx="5"
+        fill="var(--accent)"
+        opacity="0.62"
+        transform="rotate(11 155 92)"
+      />
+      <rect
+        x="385"
+        y="150"
+        width="260"
+        height="225"
+        rx="5"
+        fill="currentColor"
+        opacity="0.2"
+        transform="rotate(-7 385 150)"
+      />
+      <circle
+        cx="585"
+        cy="118"
+        r="58"
+        fill="var(--status-move-in-ready)"
+        opacity="0.22"
+      />
     </>
   ),
   "double-storey": (
     <>
-      <path d="M158 176 L400 104 L642 176" />
-      <path d="M138 176 H662" />
-      <path d="M186 176 V430 H614 V176" />
-      <path d="M186 298 H614" />
-      <path d="M224 212 H296 V270 H224 Z M260 212 V270" />
-      <path d="M330 212 H470 V270 H330 Z M400 212 V270" />
-      <path d="M504 212 H576 V270 H504 Z M540 212 V270" />
-      <path d="M262 288 H538 M262 288 V264 M538 288 V264" />
-      <path d="M224 336 H300 V396 H224 Z" />
-      <path d="M372 336 H428 V430 H372 Z" />
-      <path d="M470 328 H614 V430" />
-      <path d="M506 328 V430 M542 328 V430 M578 328 V430" />
+      <rect x="118" y="248" width="526" height="170" rx="6" fill="currentColor" opacity="0.12" />
+      <rect x="235" y="78" width="352" height="215" rx="6" fill="var(--accent)" opacity="0.48" />
+      <rect x="318" y="120" width="328" height="254" rx="6" fill="currentColor" opacity="0.19" transform="rotate(8 318 120)" />
+      <circle cx="198" cy="162" r="86" fill="var(--status-under-construction)" opacity="0.2" />
+      <rect x="286" y="64" width="8" height="365" fill="var(--foreground)" opacity="0.45" />
     </>
   ),
   townhouse: (
     <>
-      <path d="M268 132 H532 V430 H268 Z" />
-      <path d="M252 132 H548" />
-      <path d="M268 250 H532" />
-      <path d="M300 176 H364 V232 H300 Z M332 176 V232" />
-      <path d="M436 176 H500 V232 H436 Z" />
-      <path d="M300 246 H500 M300 246 V222 M500 246 V222" />
-      <path d="M300 286 H372 V346 H300 Z" />
-      <path d="M412 286 H500 V346 H412 Z" />
-      <path d="M368 366 H432 V430 H368 Z" />
-      <path d="M556 430 V132" strokeDasharray="8 10" />
-      <path d="M244 430 V132" strokeDasharray="8 10" />
+      {[0, 1, 2, 3, 4].map((column) => (
+        <rect
+          key={column}
+          x={140 + column * 106}
+          y={84 + (column % 2) * 44}
+          width="78"
+          height={300 - (column % 3) * 38}
+          rx="4"
+          fill={column === 2 ? "var(--accent)" : "currentColor"}
+          opacity={column === 2 ? 0.62 : 0.14 + column * 0.035}
+        />
+      ))}
+      <polygon points="95,420 698,345 742,430 132,478" fill="currentColor" opacity="0.1" />
+      <circle cx="616" cy="110" r="52" fill="var(--status-completed)" opacity="0.2" />
     </>
   ),
 };
@@ -70,16 +88,16 @@ export function ArchitecturalFrame({
       aria-hidden
       className={cn("h-full w-full", className)}
       fill="none"
-      stroke="currentColor"
-      strokeWidth={1.25}
-      strokeLinecap="square"
     >
-      {/* Setback and ground reference lines. */}
-      <g opacity={0.45} strokeDasharray="6 12">
-        <path d="M60 460 H740" />
-        <path d="M400 60 V460" />
+      <g opacity="0.22" stroke="currentColor" strokeWidth="1">
+        {[100, 200, 300, 400].map((y) => (
+          <path key={`h-${y}`} d={`M40 ${y} H760`} />
+        ))}
+        {[160, 280, 400, 520, 640].map((x) => (
+          <path key={`v-${x}`} d={`M${x} 40 V460`} />
+        ))}
       </g>
-      <path d="M60 430 H740" opacity={0.7} />
+      <circle cx="400" cy="250" r="185" fill="currentColor" opacity="0.025" />
       {variants[variant]}
     </svg>
   );

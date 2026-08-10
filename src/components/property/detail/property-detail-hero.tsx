@@ -5,8 +5,8 @@ import { ArrowLeft, DoorOpen } from "lucide-react";
 import { StatusBadge } from "@/components/property/status-badge";
 import { Button } from "@/components/ui/button";
 import { Heading, Text } from "@/components/ui/typography";
+import { publicPriceLabel } from "@/lib/properties/display";
 import { PROPERTIES_ROUTE } from "@/lib/routes";
-import { siteConfig } from "@/lib/site-config";
 import type { Property } from "@/types";
 
 export interface PropertyDetailHeroProps {
@@ -19,12 +19,9 @@ export interface PropertyDetailHeroProps {
  */
 export function PropertyDetailHero({ property }: PropertyDetailHeroProps) {
   const { address, label } = property.location;
-  const facts = [property.priceDisplay, property.completionLabel].filter(
+  const facts = [publicPriceLabel(property.priceDisplay), property.completionLabel].filter(
     Boolean,
   );
-  const enquiryHref = `mailto:${siteConfig.contact.email}?subject=${encodeURIComponent(
-    `${property.name}, ${property.suburb}`,
-  )}`;
 
   return (
     <div>
@@ -70,7 +67,7 @@ export function PropertyDetailHero({ property }: PropertyDetailHeroProps) {
       ) : null}
 
       <div className="mt-10 flex flex-wrap gap-4">
-        <Button href={enquiryHref} variant="accent" size="lg">
+        <Button href="#property-enquiry" variant="accent" size="lg">
           Enquire about this home
         </Button>
         <Button href={PROPERTIES_ROUTE} variant="outline" size="lg">

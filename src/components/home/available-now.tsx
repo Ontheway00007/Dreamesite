@@ -6,6 +6,7 @@ import { RevealGroup, RevealItem } from "@/components/motion/reveal";
 import { ENQUIRY_ANCHOR, propertyHref } from "@/lib/routes";
 import { propertiesByStatus } from "@/lib/properties/portfolio-summary";
 import { getProperties } from "@/lib/properties/repository";
+import { publicPriceLabel } from "@/lib/properties/display";
 import { cn } from "@/lib/utils/cn";
 import type { Property } from "@/types";
 
@@ -146,6 +147,8 @@ function AvailableCard({
   property: Property;
   featured: boolean;
 }) {
+  const priceLabel = publicPriceLabel(property.priceDisplay);
+
   return (
     <li className={featured ? "lg:col-span-2" : undefined}>
       <a
@@ -195,7 +198,7 @@ function AvailableCard({
           </div>
 
           {/* Price with purposeful highlight = "commercial intent" */}
-          {property.priceDisplay ? (
+          {priceLabel ? (
             <div className="relative shrink-0 overflow-hidden rounded-md bg-black/5 px-3 py-1.5 transition-all duration-500 motion-safe:group-hover:bg-accent/10 motion-safe:group-hover:-translate-y-0.5">
               {/* Animated underline that reveals on hover */}
               <span 
@@ -203,7 +206,7 @@ function AvailableCard({
                 className="absolute inset-x-0 bottom-0 h-0.5 translate-x-[-100%] bg-accent transition-transform duration-500 motion-safe:group-hover:translate-x-0"
               />
               <p className="relative text-sm font-medium text-black/80 transition-colors duration-300 motion-safe:group-hover:text-black">
-                {property.priceDisplay}
+                {priceLabel}
               </p>
             </div>
           ) : null}

@@ -13,7 +13,7 @@ import type { PropertyStatus } from "@/types";
  * UI: there is no second copy of the palette to keep in sync.
  */
 
-const MARKER_SIZE = 20;
+const MARKER_SIZE = 28;
 const PIXEL_RATIO = 2;
 
 export function markerImageId(status: PropertyStatus): string {
@@ -62,39 +62,132 @@ export function readMapPalette(): MapPalette {
   };
 }
 
-function drawShape(
+function drawPolygon(
   context: CanvasRenderingContext2D,
-  shape: "circle" | "triangle" | "diamond" | "ring",
+  points: readonly (readonly [number, number])[],
+): void {
+  context.beginPath();
+  context.moveTo(points[0][0], points[0][1]);
+
+  for (const [x, y] of points.slice(1)) {
+    context.lineTo(x, y);
+  }
+
+  context.closePath();
+}
+
+/**
+ * Four architectural symbols that still communicate their status without
+ * colour: a lit roundel, a segmented frame, a solid plan diamond and a closed
+ * double ring.
+ */
+function drawMarker(
+  context: CanvasRenderingContext2D,
+  status: PropertyStatus,
+  color: string,
+  palette: MapPalette,
   size: number,
 ): void {
+  const unit = PIXEL_RATIO;
   const center = size / 2;
-  const radius = center - 3;
+
+  context.lineCap = "round";
+  context.lineJoin = "round";
+
+  if (status === "move-in-ready") {
+    context.beginPath();
+    context.arc(center, center, 11 * unit, 0, Math.PI * 2);
+    context.fillStyle = palette.background;
+    context.fill();
+    context.lineWidth = 2 * unit;
+    context.strokeStyle = color;
+    context.stroke();
+
+    context.beginPath();
+    context.arc(center, center, 5 * unit, 0, Math.PI * 2);
+    context.fillStyle = color;
+    context.fill();
+    context.beginPath();
+    context.arc(
+      center - 1.5 * unit,
+      center - 1.5 * unit,
+      1.25 * unit,
+      0,
+      Math.PI * 2,
+    );
+    context.fillStyle = palette.foreground;
+    context.fill();
+    return;
+  }
+
+  if (status === "under-construction") {
+    drawPolygon(context, [
+      [center, 3 * unit],
+      [25 * unit, 24 * unit],
+      [3 * unit, 24 * unit],
+    ]);
+    context.fillStyle = palette.background;
+    context.fill();
+    context.lineWidth = 2 * unit;
+    context.strokeStyle = color;
+    context.stroke();
+
+    context.beginPath();
+    context.moveTo(center, 8 * unit);
+    context.lineTo(center, 20 * unit);
+    context.moveTo(8 * unit, 21 * unit);
+    context.lineTo(20 * unit, 21 * unit);
+    context.moveTo(10 * unit, 17 * unit);
+    context.lineTo(18 * unit, 17 * unit);
+    context.strokeStyle = color;
+    context.lineWidth = 1.5 * unit;
+    context.stroke();
+    return;
+  }
+
+  if (status === "completed") {
+    drawPolygon(context, [
+      [center, 2 * unit],
+      [26 * unit, center],
+      [center, 26 * unit],
+      [2 * unit, center],
+    ]);
+    context.fillStyle = palette.background;
+    context.fill();
+
+    drawPolygon(context, [
+      [center, 6 * unit],
+      [22 * unit, center],
+      [center, 22 * unit],
+      [6 * unit, center],
+    ]);
+    context.fillStyle = color;
+    context.fill();
+    context.fillStyle = palette.background;
+    context.fillRect(
+      center - 2 * unit,
+      center - 2 * unit,
+      4 * unit,
+      4 * unit,
+    );
+    return;
+  }
 
   context.beginPath();
-
-  switch (shape) {
-    case "circle":
-      context.arc(center, center, radius, 0, Math.PI * 2);
-      break;
-    case "ring":
-      context.arc(center, center, radius - 0.5, 0, Math.PI * 2);
-      break;
-    case "triangle": {
-      const height = radius * 1.9;
-      context.moveTo(center, center - height / 2);
-      context.lineTo(center + radius, center + height / 2);
-      context.lineTo(center - radius, center + height / 2);
-      context.closePath();
-      break;
-    }
-    case "diamond":
-      context.moveTo(center, center - radius);
-      context.lineTo(center + radius, center);
-      context.lineTo(center, center + radius);
-      context.lineTo(center - radius, center);
-      context.closePath();
-      break;
-  }
+  context.arc(center, center, 11 * unit, 0, Math.PI * 2);
+  context.fillStyle = palette.background;
+  context.fill();
+  context.lineWidth = 2 * unit;
+  context.strokeStyle = color;
+  context.stroke();
+  context.beginPath();
+  context.arc(center, center, 6 * unit, 0, Math.PI * 2);
+  context.lineWidth = 1.5 * unit;
+  context.stroke();
+  context.beginPath();
+  context.moveTo(9 * unit, center);
+  context.lineTo(19 * unit, center);
+  context.stroke();
 }
 
 export interface MarkerImage {
@@ -124,23 +217,7 @@ export function createMarkerImages(palette: MapPalette): MarkerImage[] {
     }
 
     const color = readCssColor(token.cssVariable, palette.accent);
-    const hollow = token.markerShape === "ring";
-
-    drawShape(context, token.markerShape, size);
-
-    // A dark keyline keeps every marker legible against pale map features.
-    context.lineWidth = 3 * PIXEL_RATIO;
-    context.strokeStyle = palette.background;
-    context.stroke();
-
-    if (hollow) {
-      context.lineWidth = 2.5 * PIXEL_RATIO;
-      context.strokeStyle = color;
-      context.stroke();
-    } else {
-      context.fillStyle = color;
-      context.fill();
-    }
+    drawMarker(context, status, color, palette, size);
 
     images.push({
       id: markerImageId(status),

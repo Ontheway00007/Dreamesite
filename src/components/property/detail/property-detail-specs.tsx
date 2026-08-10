@@ -14,8 +14,10 @@ export function PropertyDetailSpecs({ property }: PropertyDetailSpecsProps) {
     { label: "Bedrooms", value: String(property.bedrooms) },
     { label: "Bathrooms", value: String(property.bathrooms) },
     { label: "Car spaces", value: String(property.carSpaces) },
-    { label: "Land size", value: `${property.landSize} m²` },
-    ...(property.houseSize
+    ...(property.landSize > 0
+      ? [{ label: "Land size", value: `${property.landSize} m²` }]
+      : []),
+    ...(property.houseSize && property.houseSize > 0
       ? [{ label: "Internal area", value: `${property.houseSize} m²` }]
       : []),
     { label: "Status", value: propertyStatusTokens[property.status].label },

@@ -27,6 +27,7 @@ import {
   createMarkerImages,
   markerImageId,
   markerImagePixelRatio,
+  readCssColor,
   readMapPalette,
 } from "@/lib/map/marker-images";
 import { isMappable } from "@/lib/properties/privacy";
@@ -102,7 +103,6 @@ export default function PropertyMap({
   const controlPositionRef = useRef(controlPosition);
   const hoveredIdRef = useRef<string | null>(null);
   const fittedSignatureRef = useRef<string | null>(null);
-  const breathingIntervalRef = useRef<number | null>(null);
 
   const [isReady, setIsReady] = useState(false);
   const [hasError, setHasError] = useState(false);
@@ -198,6 +198,10 @@ export default function PropertyMap({
     );
 
     const palette = readMapPalette();
+    const availabilityColor = readCssColor(
+      "--status-move-in-ready",
+      palette.accent,
+    );
 
     const onStyleLoad = () => {
       for (const { id, image } of createMarkerImages(palette)) {
@@ -269,6 +273,27 @@ export default function PropertyMap({
         },
       });
 
+      // Only a home that can be occupied now emits an availability signal.
+      // Historic and in-progress markers, and the map camera, remain still.
+      map.addLayer({
+        id: mapLayers.activity,
+        type: "circle",
+        source: mapSource.properties,
+        filter: [
+          "all",
+          ["!", ["has", "point_count"]],
+          ["==", ["get", "status"], "move-in-ready"],
+        ],
+        paint: {
+          "circle-radius": 14,
+          "circle-color": availabilityColor,
+          "circle-opacity": 0.12,
+          "circle-stroke-width": 1,
+          "circle-stroke-color": availabilityColor,
+          "circle-stroke-opacity": 0.28,
+        },
+      });
+
       map.addLayer({
         id: mapLayers.markers,
         type: "symbol",
@@ -326,10 +351,6 @@ export default function PropertyMap({
       mapRef.current = null;
       fittedSignatureRef.current = null;
       hoveredIdRef.current = null;
-      if (breathingIntervalRef.current) {
-        window.clearInterval(breathingIntervalRef.current);
-        breathingIntervalRef.current = null;
-      }
       // Removing the map detaches every listener, source, layer and image, and
       // releases the WebGL context, so navigating away leaks nothing.
       map.remove();
@@ -533,57 +554,52 @@ export default function PropertyMap({
     return () => observer.disconnect();
   }, [isReady]);
 
-  // Breathing camera movement — subtle organic life
+  // A restrained availability pulse. It animates the signal, never the
+  // camera, and pauses while somebody is inspecting a property.
   useEffect(() => {
     const map = mapRef.current;
 
-    if (!isReady || !map || selectedId !== null) {
+    if (!isReady || !map || !map.getLayer(mapLayers.activity)) {
       return;
     }
 
     const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (prefersReduced) {
+    if (prefersReduced || selectedId !== null) {
+      map.setPaintProperty(mapLayers.activity, "circle-radius", 14);
+      map.setPaintProperty(mapLayers.activity, "circle-opacity", 0.08);
+      map.setPaintProperty(mapLayers.activity, "circle-stroke-opacity", 0.2);
       return;
     }
 
-    // Start breathing after initial fit
-    const startBreathing = setTimeout(() => {
-      const breathe = () => {
-        if (!map || mapRef.current !== map) {
-          return;
-        }
+    let animationFrame = 0;
+    const animate = (time: number) => {
+      if (mapRef.current !== map) {
+        return;
+      }
 
-        const center = map.getCenter();
-        const zoom = map.getZoom();
-        
-        // Subtle drift in a circular pattern
-        const angle = Date.now() / 8000; // Slow rotation over 8 seconds
-        const radius = 0.0008; // Very small radius
-        const newCenter: [number, number] = [
-          center.lng + Math.cos(angle) * radius,
-          center.lat + Math.sin(angle) * radius,
-        ];
-        
-        const zoomDelta = Math.sin(Date.now() / 12000) * 0.1; // Gentle zoom breathing
+      const progress = (Math.sin(time / 900 - Math.PI / 2) + 1) / 2;
+      map.setPaintProperty(
+        mapLayers.activity,
+        "circle-radius",
+        14 + progress * 9,
+      );
+      map.setPaintProperty(
+        mapLayers.activity,
+        "circle-opacity",
+        0.18 * (1 - progress),
+      );
+      map.setPaintProperty(
+        mapLayers.activity,
+        "circle-stroke-opacity",
+        0.42 * (1 - progress),
+      );
+      animationFrame = window.requestAnimationFrame(animate);
+    };
 
-        map.easeTo({
-          center: newCenter,
-          zoom: zoom + zoomDelta * 0.05,
-          duration: 2000,
-          easing: (t) => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t, // ease-in-out
-        });
-      };
-
-      breathe(); // First breath
-      breathingIntervalRef.current = window.setInterval(breathe, 2100);
-    }, 2000); // Wait 2s after load
+    animationFrame = window.requestAnimationFrame(animate);
 
     return () => {
-      clearTimeout(startBreathing);
-      if (breathingIntervalRef.current) {
-        window.clearInterval(breathingIntervalRef.current);
-        breathingIntervalRef.current = null;
-      }
+      window.cancelAnimationFrame(animationFrame);
     };
   }, [isReady, selectedId]);
 
@@ -597,7 +613,11 @@ export default function PropertyMap({
       <div
         ref={containerRef}
         data-lenis-prevent
-        className="h-full w-full [&_.mapboxgl-ctrl-group]:border-border [&_.mapboxgl-ctrl-group]:bg-surface [&_.mapboxgl-ctrl-group]:border [&_.mapboxgl-ctrl-group_button+button]:border-t-border [&_.mapboxgl-ctrl-group_button]:!bg-transparent [&_.mapboxgl-ctrl-icon]:invert"
+        className={cn(
+          "h-full w-full [&_.mapboxgl-ctrl-group]:border-border [&_.mapboxgl-ctrl-group]:bg-surface [&_.mapboxgl-ctrl-group]:border [&_.mapboxgl-ctrl-group_button+button]:border-t-border [&_.mapboxgl-ctrl-group_button]:!bg-transparent [&_.mapboxgl-ctrl-icon]:invert",
+          controlPosition === "top-right" &&
+            "[&_.mapboxgl-ctrl-top-right]:!top-[calc(var(--header-height)+1rem)]",
+        )}
       />
 
       {showLegend && isReady && !hasError ? (

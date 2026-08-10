@@ -130,10 +130,10 @@ export function MapStage({ properties, summary, token }: MapStageProps) {
             /*
               The status rail already explains what each marker means, and the
               built-in legend rendered underneath the brand block where it was
-              unreadable. Controls move to the bottom so they clear the header.
+              unreadable. Controls sit below the header and clear the status rail.
             */
             showLegend={false}
-            controlPosition="bottom-right"
+            controlPosition="top-right"
             className="h-full w-full"
           />
         )}
@@ -165,7 +165,7 @@ export function MapStage({ properties, summary, token }: MapStageProps) {
       {/* Enhanced with three-way hover reaction: typography changes.      */}
       {/* ---------------------------------------------------------------- */}
       <div className="pointer-events-none absolute inset-x-0 top-0 px-5 pt-[calc(var(--header-height)+1.5rem)] sm:px-8 lg:px-12">
-        <div className="pointer-events-auto max-w-md">
+        <div className="pointer-events-auto max-w-[calc(100%-4.5rem)] sm:max-w-md">
           <h1
             id="map-stage-heading"
             className={cn(
@@ -350,13 +350,7 @@ function StatusRail({ summary, active, onToggle, disabled }: StatusRailProps) {
                 (disabled || isEmpty) && "cursor-not-allowed opacity-45",
               )}
             >
-              <span
-                aria-hidden="true"
-                className={cn(
-                  "size-2 shrink-0 rounded-full",
-                  token.swatchClassName,
-                )}
-              />
+              <StatusGlyph status={status} className={token.textClassName} />
               <span className="flex flex-col leading-tight">
                 <span className="text-foreground text-sm font-medium tabular-nums">
                   {count}
@@ -376,6 +370,64 @@ function StatusRail({ summary, active, onToggle, disabled }: StatusRailProps) {
         className="from-surface pointer-events-none absolute inset-y-0 right-0 w-10 rounded-r-xl bg-gradient-to-l to-transparent sm:hidden"
       />
     </div>
+  );
+}
+
+function StatusGlyph({
+  status,
+  className,
+}: {
+  status: PropertyStatus;
+  className?: string;
+}) {
+  if (status === "under-construction") {
+    return (
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 16 16"
+        className={cn("size-3 shrink-0", className)}
+      >
+        <path d="M8 1.8 14 13H2L8 1.8Z" fill="none" stroke="currentColor" strokeWidth="1.7" />
+        <path d="M8 5.5v5M5.5 11h5" stroke="currentColor" strokeWidth="1.2" />
+      </svg>
+    );
+  }
+
+  if (status === "completed") {
+    return (
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 16 16"
+        className={cn("size-3 shrink-0", className)}
+      >
+        <path d="m8 1.5 6.5 6.5L8 14.5 1.5 8 8 1.5Z" fill="currentColor" />
+        <path d="M6.6 6.6h2.8v2.8H6.6z" className="fill-background" />
+      </svg>
+    );
+  }
+
+  if (status === "sold") {
+    return (
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 16 16"
+        className={cn("size-3 shrink-0", className)}
+      >
+        <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="1.5" />
+        <circle cx="8" cy="8" r="3.2" fill="none" stroke="currentColor" strokeWidth="1.2" />
+        <path d="M5.5 8h5" stroke="currentColor" strokeWidth="1.2" />
+      </svg>
+    );
+  }
+
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "relative size-3 shrink-0 rounded-full border border-current before:absolute before:inset-[3px] before:rounded-full before:bg-current",
+        className,
+      )}
+    />
   );
 }
 

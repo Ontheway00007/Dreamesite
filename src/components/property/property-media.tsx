@@ -19,8 +19,8 @@ export interface PropertyMediaProps {
 }
 
 /**
- * Fills its container with a property's photography, or with the architectural
- * drawing when there is none. Shared by the card and the map preview so the
+ * Fills its container with a property's photography, or with an abstract
+ * material study when there is none. Shared by the card and map preview so the
  * image and fallback rules live in one place.
  */
 export function PropertyMedia({
@@ -63,7 +63,7 @@ export function PropertyMedia({
             labelClassName,
           )}
         >
-          Architectural preview
+          Material study
         </span>
       ) : null}
     </>

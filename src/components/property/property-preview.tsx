@@ -5,6 +5,7 @@ import { PropertySpecs } from "@/components/property/property-specs";
 import { StatusBadge } from "@/components/property/status-badge";
 import { Button } from "@/components/ui/button";
 import { propertyHref } from "@/lib/routes";
+import { publicPriceLabel } from "@/lib/properties/display";
 import { cn } from "@/lib/utils/cn";
 import type { Property } from "@/types";
 
@@ -28,6 +29,7 @@ export function PropertyPreview({
   className,
 }: PropertyPreviewProps) {
   const { address, label } = property.location;
+  const priceLabel = publicPriceLabel(property.priceDisplay);
 
   return (
     <article
@@ -72,9 +74,9 @@ export function PropertyPreview({
 
           <PropertySpecs property={property} size="sm" className="mt-4" />
 
-          {property.completionLabel || property.priceDisplay ? (
+          {property.completionLabel || priceLabel ? (
             <p className="text-foreground-muted mt-3 text-xs">
-              {[property.priceDisplay, property.completionLabel]
+              {[priceLabel, property.completionLabel]
                 .filter(Boolean)
                 .join(" · ")}
             </p>

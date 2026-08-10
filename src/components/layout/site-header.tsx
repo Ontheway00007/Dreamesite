@@ -162,9 +162,9 @@ export function SiteHeader({
     <header
       ref={headerRef}
       className={cn(
-        "fixed inset-x-0 top-0 z-50 transition-[background-color,border-color] duration-(--duration-base) ease-luxe",
+        "fixed inset-x-0 top-0 z-50 bg-[#070708]/95 backdrop-blur-xl transition-[background-color,border-color] duration-(--duration-base) ease-luxe",
         isScrolled || isOpen
-          ? "border-border bg-surface-overlay border-b backdrop-blur-xl"
+          ? "border-border border-b shadow-soft"
           : "border-b border-transparent",
       )}
     >
@@ -219,7 +219,7 @@ export function SiteHeader({
         inert={!isOpen}
         data-lenis-prevent
         className={cn(
-          "border-border bg-background/98 fixed inset-x-0 top-(--header-height) bottom-0 overflow-y-auto border-t backdrop-blur-xl transition-[opacity,transform] duration-(--duration-base) ease-luxe md:hidden",
+          "border-border bg-background/98 absolute inset-x-0 top-full h-[calc(100dvh-var(--header-height))] overflow-y-auto border-t backdrop-blur-xl transition-[opacity,transform] duration-(--duration-base) ease-luxe md:hidden",
           isOpen
             ? "translate-y-0 opacity-100"
             : "pointer-events-none -translate-y-3 opacity-0",
