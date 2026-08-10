@@ -1,5 +1,3 @@
-"use client";
-
 import { ArrowRight } from "lucide-react";
 
 import { PropertyMedia } from "@/components/property/property-media";
@@ -41,6 +39,16 @@ import type { Property } from "@/types";
  * 
  * Zero available = honest statement + enquiry CTA.
  * Better than silence or fake listings.
+ *
+ * ## Do not add "use client" to this file
+ *
+ * This is an async Server Component. Marking it `"use client"` makes it an
+ * async Client Component, which React does not support: it is re-invoked in a
+ * loop, and because the body awaits `getProperties()`, every iteration issues a
+ * Supabase request from the browser.
+ *
+ * `RevealGroup` and `RevealItem` are already Client Components, and a Server
+ * Component may render one. No directive is needed here to use them.
  */
 export async function AvailableNow() {
   const properties = await getProperties();
@@ -51,16 +59,6 @@ export async function AvailableNow() {
       aria-labelledby="available-now-heading"
       className="bg-foreground text-foreground-inverse relative overflow-hidden py-20 lg:py-28"
     >
-      {/* Subtle texture overlay for depth */}
-      <div 
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 opacity-[0.02]"
-        style={{
-          backgroundImage: `radial-gradient(circle at 2px 2px, currentColor 1px, transparent 0)`,
-          backgroundSize: '32px 32px'
-        }}
-      />
-
       <div className="relative mx-auto max-w-[110rem] px-5 sm:px-8 lg:px-12">
         {/* Header with staggered reveal */}
         <div className="flex flex-wrap items-end justify-between gap-6">

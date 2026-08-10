@@ -4,7 +4,7 @@ import { useRef } from "react";
 import { FileCheck2, HardHat, KeyRound, PencilRuler } from "lucide-react";
 
 import { useGsap } from "@/hooks/use-gsap";
-import { gsap, ScrollTrigger } from "@/lib/animation/gsap";
+import { ScrollTrigger } from "@/lib/animation/gsap";
 import { cn } from "@/lib/utils/cn";
 
 /**
@@ -149,7 +149,6 @@ export function ConstructionJourney() {
       }
 
       const container = containerRef.current;
-      const stagesContainer = stagesRef.current;
       const stageElements = gsap.utils.toArray<HTMLElement>("[data-stage]");
       
       // Check if mobile
@@ -159,7 +158,7 @@ export function ConstructionJourney() {
       // On desktop, use full pinned scroll experience
       if (isMobile) {
         // Mobile: simpler staggered reveals without complex pinning
-        stageElements.forEach((stage, index) => {
+        stageElements.forEach((stage) => {
           gsap.fromTo(
             stage,
             { 
@@ -241,7 +240,14 @@ export function ConstructionJourney() {
     <section 
       ref={containerRef}
       aria-labelledby="construction-journey-heading"
-      className="relative w-full overflow-hidden bg-background lg:h-screen"
+      /*
+        The pinned, single-viewport composition is gated behind `motion-safe`.
+        `useGsap` runs nothing for a reduced-motion visitor, so without the gate
+        the stages would stay absolutely positioned and invisible on top of each
+        other inside a fixed screen height. Ungated, this falls back to the
+        stacked flow layout the small screens already use, which reads fine.
+      */
+      className="relative w-full overflow-hidden bg-background lg:motion-safe:h-screen"
     >
       {/* Background gradient that shifts with scroll */}
       <div className="absolute inset-0 bg-gradient-to-b from-background via-background-alt to-background" />
@@ -249,13 +255,13 @@ export function ConstructionJourney() {
       {/* The scroll-linked stages */}
       <div 
         ref={stagesRef}
-        className="relative h-full w-full lg:absolute lg:inset-0"
+        className="relative h-full w-full lg:motion-safe:absolute lg:motion-safe:inset-0"
       >
-        {stages.map((stage, index) => (
+        {stages.map((stage) => (
           <div
             key={stage.id}
             data-stage={stage.id}
-            className="relative py-20 opacity-100 lg:absolute lg:inset-0 lg:py-0 lg:opacity-0"
+            className="relative py-20 opacity-100 lg:motion-safe:absolute lg:motion-safe:inset-0 lg:motion-safe:py-0 lg:motion-safe:opacity-0"
           >
             <div className="h-full w-full">
               {/* Three-column layout: Stage info | Photography | Story */}

@@ -1,5 +1,3 @@
-"use client";
-
 import { ArrowRight } from "lucide-react";
 
 import { PropertyMedia } from "@/components/property/property-media";
@@ -38,6 +36,17 @@ import type { Property } from "@/types";
  * One project = lead composition only.
  * Two projects = lead + one secondary.
  * Three+ projects = lead + two secondary (asymmetric).
+ *
+ * ## Do not add "use client" to this file
+ *
+ * This is an async Server Component. Marking it `"use client"` makes it an
+ * async Client Component, which React does not support: it is re-invoked in a
+ * loop, and because the body awaits `getFeaturedProperties()`, every iteration
+ * issues a Supabase request from the browser. That shipped once and flooded the
+ * database until the tab exhausted its socket pool.
+ *
+ * `Reveal` and `RevealGroup` are already Client Components, and a Server
+ * Component may render one. No directive is needed here to use them.
  */
 export async function SelectedProjects() {
   const featured = await getFeaturedProperties();
