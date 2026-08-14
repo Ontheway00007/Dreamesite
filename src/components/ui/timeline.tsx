@@ -81,7 +81,7 @@ export function Timeline({ items, className }: TimelineProps) {
               {icon}
             </div>
             <div className="pt-1 md:pt-4">
-              <p className="text-foreground-subtle text-xs font-medium tracking-[0.22em] uppercase">
+              <p className="text-foreground-subtle text-xs font-medium tracking-eyebrow uppercase">
                 {step}
               </p>
               <h3 className="font-display text-heading-3 mt-3 font-normal">

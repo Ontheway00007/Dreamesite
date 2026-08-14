@@ -55,7 +55,7 @@ export function MapPreviewSection() {
                 </li>
               ))}
             </ol>
-            <p className="text-foreground-subtle mt-10 text-[0.625rem] font-medium tracking-[0.2em] uppercase">
+            <p className="text-foreground-subtle mt-10 text-label font-medium tracking-label uppercase">
               Northern growth corridor
             </p>
           </div>

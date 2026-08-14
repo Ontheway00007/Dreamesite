@@ -98,7 +98,7 @@ export function MapPropertyPanel({
 
       <div className="space-y-4 p-5">
         <div className="space-y-1.5">
-          <p className="text-foreground-subtle text-xs tracking-[0.18em] uppercase">
+          <p className="text-foreground-subtle text-xs tracking-label uppercase">
             {property.suburb}
             {property.state ? `, ${property.state}` : ""}
           </p>
@@ -137,13 +137,28 @@ export function MapPropertyPanel({
           </dl>
         ) : null}
 
+        {/*
+          `rounded-full` and `press`, so this reads as the same kind of object as
+          every other primary action on the site. It was the last `rounded-lg`
+          call-to-action left after the two in `map-stage.tsx` became `Button`s.
+
+          The shape rule for the page, stated once: actions are pills, cards and
+          panels are `rounded-xl` upward, and rows inside a list or a segmented
+          rail keep `rounded-lg` because they are rows rather than controls.
+          Rail segments in `map-stage.tsx` and the disclosure rows below it are
+          the rows that rule refers to.
+
+          Not the shared `Button`: this one is full width with the label and the
+          arrow pushed to opposite edges, which `Button` does not express, and
+          forcing it would mean adding a variant for a single use.
+        */}
         <a
           href={propertyHref(property.slug)}
-          className="focus-visible:ring-ring bg-foreground text-foreground-inverse hover:bg-accent-strong group flex items-center justify-between gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent focus-visible:outline-none"
+          className="focus-visible:ring-ring bg-foreground text-foreground-inverse hover:bg-accent-strong press group flex items-center justify-between gap-3 rounded-full px-5 py-3 text-sm font-medium transition-colors duration-(--duration-base) ease-luxe focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent focus-visible:outline-none"
         >
           Explore this home
           <ArrowRight
-            className="size-4 transition-transform motion-safe:group-hover:translate-x-1"
+            className="size-4 transition-transform duration-(--duration-hover) ease-luxe motion-safe:group-hover:translate-x-1"
             aria-hidden="true"
           />
         </a>

@@ -113,7 +113,7 @@ export function PropertyExplorer({ properties }: PropertyExplorerProps) {
         <button
           type="button"
           onClick={() => setResetToken((value) => value + 1)}
-          className="text-foreground-subtle hover:text-foreground hidden items-center gap-2 text-xs font-medium tracking-[0.16em] uppercase transition-colors duration-(--duration-fast) lg:inline-flex"
+          className="text-foreground-subtle hover:text-foreground hidden items-center gap-2 text-xs font-medium tracking-label uppercase transition-colors duration-(--duration-fast) lg:inline-flex"
         >
           <RotateCcw size={14} aria-hidden />
           Reset map view

@@ -21,7 +21,7 @@ export function MapLegend({ className }: MapLegendProps) {
         className,
       )}
     >
-      <p className="text-foreground-subtle text-[0.625rem] font-medium tracking-[0.2em] uppercase">
+      <p className="text-foreground-subtle text-label font-medium tracking-label uppercase">
         Marker key
       </p>
       <ul className="mt-2.5 space-y-1.5">

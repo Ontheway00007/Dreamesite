@@ -27,7 +27,7 @@ export function PropertyDetailHero({ property }: PropertyDetailHeroProps) {
     <div>
       <Link
         href={PROPERTIES_ROUTE}
-        className="text-foreground-subtle hover:text-foreground inline-flex items-center gap-2 text-xs font-medium tracking-[0.16em] uppercase transition-colors duration-(--duration-fast)"
+        className="text-foreground-subtle hover:text-foreground inline-flex items-center gap-2 text-xs font-medium tracking-label uppercase transition-colors duration-(--duration-fast)"
       >
         <ArrowLeft size={14} aria-hidden />
         All homes
@@ -36,7 +36,7 @@ export function PropertyDetailHero({ property }: PropertyDetailHeroProps) {
       <div className="mt-8 flex flex-wrap items-center gap-3">
         <StatusBadge status={property.status} />
         {property.displayHome?.isDisplayHome ? (
-          <span className="border-border-strong text-foreground inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[0.6875rem] font-medium tracking-[0.16em] uppercase">
+          <span className="border-border-strong text-foreground inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-label font-medium tracking-label uppercase">
             <DoorOpen size={13} aria-hidden />
             Display home
           </span>
@@ -47,7 +47,7 @@ export function PropertyDetailHero({ property }: PropertyDetailHeroProps) {
         {property.name}
       </Heading>
 
-      <p className="text-foreground-subtle mt-4 text-sm tracking-[0.16em] uppercase">
+      <p className="text-foreground-subtle mt-4 text-sm tracking-label uppercase">
         {address ?? `${property.suburb} ${property.state}`}
         {label ? (
           <span className="text-foreground-subtle normal-case"> · {label}</span>

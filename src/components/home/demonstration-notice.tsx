@@ -37,7 +37,7 @@ export function DemonstrationNotice() {
             Demonstration data.
           </span>{" "}
           The homes shown here are illustrative examples used while the site is
-          being built — not properties Dreame has constructed. Real projects
+          being built, not properties Dreame has constructed. Real projects
           appear here once they are published.
         </p>
       </div>

@@ -3,8 +3,8 @@ import { cn } from "@/lib/utils/cn";
 import type { PropertyStatus } from "@/types";
 
 const sizes = {
-  sm: "gap-1.5 px-2.5 py-1 text-[0.625rem]",
-  md: "gap-2 px-3 py-1.5 text-[0.6875rem]",
+  sm: "gap-1.5 px-2.5 py-1 text-label",
+  md: "gap-2 px-3 py-1.5 text-label",
 } as const;
 
 export interface StatusBadgeProps {
@@ -24,7 +24,7 @@ export function StatusBadge({
   return (
     <span
       className={cn(
-        "border-border-strong bg-surface-overlay text-foreground inline-flex items-center rounded-full border font-medium tracking-[0.16em] whitespace-nowrap uppercase backdrop-blur-md",
+        "border-border-strong bg-surface-overlay text-foreground inline-flex items-center rounded-full border tracking-label font-medium whitespace-nowrap uppercase backdrop-blur-md",
         sizes[size],
         className,
       )}

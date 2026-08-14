@@ -66,7 +66,7 @@ export function PropertyListItem({
             />
           </div>
 
-          <p className="text-foreground-subtle mt-1 text-xs tracking-[0.12em] uppercase">
+          <p className="text-foreground-subtle mt-1 text-xs tracking-label uppercase">
             {address ?? `${property.suburb} ${property.state}`}
           </p>
 
@@ -77,7 +77,7 @@ export function PropertyListItem({
           <PropertySpecs property={property} size="sm" className="mt-3" />
 
           {label ? (
-            <p className="text-foreground-subtle mt-2 text-[0.6875rem]">
+            <p className="text-foreground-subtle mt-2 text-label">
               {label}
             </p>
           ) : null}

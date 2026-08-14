@@ -31,7 +31,7 @@ export function PropertyTestimonials({ property }: PropertyTestimonialsProps) {
           <blockquote className="font-display mt-6 text-xl leading-relaxed font-light">
             {testimonial.quote}
           </blockquote>
-          <figcaption className="text-foreground-subtle mt-6 text-xs font-medium tracking-[0.16em] uppercase">
+          <figcaption className="text-foreground-subtle mt-6 text-xs font-medium tracking-label uppercase">
             {testimonial.attribution}
             {testimonial.year ? ` · ${testimonial.year}` : null}
           </figcaption>

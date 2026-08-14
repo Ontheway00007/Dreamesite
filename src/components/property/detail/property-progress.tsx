@@ -68,7 +68,7 @@ export function PropertyProgress({ property }: PropertyProgressProps) {
             ? `Currently at ${currentStage.title.toLowerCase()}`
             : "All build stages complete"}
         </p>
-        <p className="text-foreground-subtle text-xs font-medium tracking-[0.2em] uppercase tabular-nums">
+        <p className="text-foreground-subtle text-xs font-medium tracking-label uppercase tabular-nums">
           {percentComplete}% complete
         </p>
       </div>
@@ -109,14 +109,14 @@ export function PropertyProgress({ property }: PropertyProgressProps) {
                   ) : milestone.state === "in-progress" ? (
                     <Loader size={13} aria-hidden />
                   ) : (
-                    <span className="text-[0.625rem] tabular-nums">
+                    <span className="text-label tabular-nums">
                       {milestone.step}
                     </span>
                   )}
                 </span>
                 <div className="min-w-0">
                   {milestone.stageLabel && (
-                    <p className="text-foreground-subtle text-[0.625rem] font-medium tracking-[0.2em] uppercase">
+                    <p className="text-foreground-subtle text-label font-medium tracking-label uppercase">
                       {milestone.stageLabel}
                     </p>
                   )}

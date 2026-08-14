@@ -55,7 +55,7 @@ export function Statistic({ value, label, suffix, className }: StatisticProps) {
         <span ref={valueRef}>{numberFormat.format(value)}</span>
         {suffix ? <span className="text-accent">{suffix}</span> : null}
       </p>
-      <p className="text-foreground-subtle text-xs font-medium tracking-[0.18em] uppercase">
+      <p className="text-foreground-subtle text-xs font-medium tracking-label uppercase">
         {label}
       </p>
     </div>

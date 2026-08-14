@@ -28,7 +28,7 @@ export function PropertyDetailSpecs({ property }: PropertyDetailSpecsProps) {
     <dl className="border-border grid grid-cols-2 gap-x-8 border-t sm:grid-cols-3 lg:grid-cols-4">
       {rows.map((row) => (
         <div key={row.label} className="border-border border-b py-5">
-          <dt className="text-foreground-subtle text-[0.625rem] font-medium tracking-[0.2em] uppercase">
+          <dt className="text-foreground-subtle text-label font-medium tracking-label uppercase">
             {row.label}
           </dt>
           <dd className="font-display mt-2 text-xl font-light">{row.value}</dd>

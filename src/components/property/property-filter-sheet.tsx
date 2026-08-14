@@ -70,7 +70,7 @@ export function PropertyFilterSheet({
         onClick={() => onOpenChange(true)}
         aria-expanded={isOpen}
         aria-controls="property-filter-sheet"
-        className="border-border bg-surface text-foreground inline-flex min-h-11 items-center gap-2 rounded-full border px-5 text-xs font-medium tracking-[0.16em] uppercase lg:hidden"
+        className="border-border bg-surface text-foreground inline-flex min-h-11 items-center gap-2 rounded-full border px-5 text-xs font-medium tracking-label uppercase lg:hidden"
       >
         <SlidersHorizontal size={15} aria-hidden />
         Filters
@@ -129,7 +129,7 @@ export function PropertyFilterSheet({
               <button
                 type="button"
                 onClick={close}
-                className="bg-foreground text-foreground-inverse mt-8 inline-flex min-h-12 w-full items-center justify-center rounded-full text-xs font-medium tracking-[0.16em] uppercase"
+                className="bg-foreground text-foreground-inverse mt-8 inline-flex min-h-12 w-full items-center justify-center rounded-full text-xs font-medium tracking-label uppercase"
               >
                 Show {resultLabel}
               </button>

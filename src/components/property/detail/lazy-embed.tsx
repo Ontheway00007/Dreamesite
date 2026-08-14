@@ -60,7 +60,7 @@ export function LazyEmbed({ embed, title, caption }: LazyEmbedProps) {
             // Constructed by `resolveEmbed` from a recognised id — never a
             // stored URL. See lib/media/embeds.ts.
             src={embed.embedUrl}
-            title={`${title} — ${embed.providerLabel} player`}
+            title={`${title}, ${embed.providerLabel} player`}
             className="absolute inset-0 h-full w-full"
             allow="fullscreen; encrypted-media; picture-in-picture"
             sandbox="allow-scripts allow-same-origin allow-presentation allow-popups allow-popups-to-escape-sandbox"
@@ -105,7 +105,7 @@ export function LazyEmbed({ embed, title, caption }: LazyEmbedProps) {
                   third party becomes involved. */}
               <span className="text-foreground text-sm font-medium">
                 Play {title}
-                <span className="sr-only"> — loads the {embed.providerLabel} player</span>
+                <span className="sr-only">, loads the {embed.providerLabel} player</span>
               </span>
             </span>
           </button>

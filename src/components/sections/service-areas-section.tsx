@@ -21,13 +21,23 @@ export function ServiceAreasSection() {
     >
       <div>
         <div className="grid items-end gap-8 lg:grid-cols-12">
+          {/*
+            No eyebrow. It read "Where we build" directly above a heading that
+            reads "Built across the north.", so it restated the heading in
+            smaller type. Four of the six homepage sections opened with one of
+            these labels, which is what gives a page that templated rhythm where
+            every section announces itself the same way. Two remain, spaced out.
+
+            The heading was `text-display`, the largest step in the scale. The
+            page's h1 is `text-heading-1`, one step below it, so this section
+            heading rendered visibly larger than the title of the page. Every
+            section h2 on the homepage is `text-heading-2` now, which puts the
+            three levels in the order their tags claim.
+          */}
           <div className="lg:col-span-8">
-            <p className="text-accent text-eyebrow font-medium uppercase">
-              Where we build
-            </p>
             <h2
               id="service-areas-heading"
-              className="font-display text-display mt-5 max-w-4xl font-light"
+              className="font-display text-heading-2 max-w-4xl font-light"
             >
               Built across the north.
             </h2>
@@ -41,13 +51,13 @@ export function ServiceAreasSection() {
 
       <div className="mt-16 grid gap-10 lg:mt-24 lg:grid-cols-12 lg:gap-14">
         <div className="lg:col-span-7">
-          <div className="border-border relative aspect-[4/3] overflow-hidden rounded-[2rem] border bg-[#d8d0c2] text-[#050506] shadow-raised sm:aspect-[16/10]">
+          <div className="border-border relative aspect-[4/3] overflow-hidden rounded-[2rem] border bg-study-paper text-study-ink shadow-raised sm:aspect-[16/10]">
             <div
               aria-hidden="true"
               className="absolute inset-0 opacity-45"
               style={{
                 backgroundImage:
-                  "radial-gradient(circle at center, transparent 0 27%, rgba(5,5,6,.12) 27.2% 27.5%, transparent 27.7% 41%, rgba(5,5,6,.1) 41.2% 41.5%, transparent 41.7%)",
+                  "radial-gradient(circle at center, transparent 0 27%, color-mix(in oklab, var(--study-ink) 12%, transparent) 27.2% 27.5%, transparent 27.7% 41%, color-mix(in oklab, var(--study-ink) 10%, transparent) 41.2% 41.5%, transparent 41.7%)",
               }}
             />
             <svg
@@ -58,7 +68,7 @@ export function ServiceAreasSection() {
             >
               <path
                 d="M110 430 C210 352 280 385 346 294 S473 224 555 170 642 120 720 66"
-                stroke="#050506"
+                stroke="var(--study-ink)"
                 strokeOpacity=".2"
                 strokeWidth="28"
                 strokeLinecap="round"
@@ -78,16 +88,16 @@ export function ServiceAreasSection() {
                 className="absolute -translate-x-1/2 -translate-y-1/2"
                 style={positions[index]}
               >
-                <span className="bg-background border-accent relative block size-5 rounded-full border-2 shadow-[0_0_0_9px_rgba(5,5,6,.12)]">
+                <span className="bg-background border-accent relative block size-5 rounded-full border-2 shadow-[0_0_0_9px_color-mix(in_oklab,var(--study-ink)_12%,transparent)]">
                   <span className="bg-accent absolute inset-1 rounded-full" />
                 </span>
-                <span className="bg-background text-foreground absolute top-7 left-1/2 -translate-x-1/2 rounded-full px-3 py-1.5 text-[0.625rem] font-medium tracking-[0.14em] whitespace-nowrap uppercase shadow-soft">
+                <span className="bg-background text-foreground absolute top-7 left-1/2 -translate-x-1/2 rounded-full px-3 py-1.5 text-label font-medium tracking-label whitespace-nowrap uppercase shadow-soft">
                   {area}
                 </span>
               </div>
             ))}
 
-            <p className="absolute right-5 bottom-4 text-[0.58rem] tracking-[0.16em] uppercase opacity-55 sm:right-7 sm:bottom-6">
+            <p className="absolute right-5 bottom-4 text-label tracking-label uppercase opacity-55 sm:right-7 sm:bottom-6">
               Corridor study · not to geographic scale
             </p>
           </div>
@@ -98,10 +108,10 @@ export function ServiceAreasSection() {
             {serviceAreas.map((area, index) => (
               <div key={area}>
                 <div className="group border-border grid grid-cols-[auto_1fr_auto] items-center gap-5 border-b py-7 sm:py-9">
-                  <span className="text-foreground-subtle text-xs font-medium tracking-[0.2em] tabular-nums">
+                  <span className="text-foreground-subtle text-xs font-medium tracking-label tabular-nums">
                     {String(index + 1).padStart(2, "0")}
                   </span>
-                  <span className="font-display text-heading-2 font-light transition-transform duration-(--duration-base) ease-luxe motion-safe:group-hover:translate-x-2">
+                  <span className="font-display text-heading-3 font-light transition-transform duration-(--duration-base) ease-luxe motion-safe:group-hover:translate-x-2">
                     {area}
                   </span>
                   <ArrowUpRight
