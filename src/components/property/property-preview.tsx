@@ -55,7 +55,7 @@ export function PropertyPreview({
               <h3 className="font-display text-heading-3 mt-3 font-normal">
                 {property.name}
               </h3>
-              <p className="text-foreground-subtle mt-1 text-xs tracking-[0.12em] uppercase">
+              <p className="text-foreground-subtle mt-1 text-xs tracking-label uppercase">
                 {address ?? `${property.suburb} ${property.state}`}
               </p>
             </div>
@@ -83,7 +83,7 @@ export function PropertyPreview({
           ) : null}
 
           {label ? (
-            <p className="text-foreground-subtle mt-2 text-[0.6875rem]">
+            <p className="text-foreground-subtle mt-2 text-label">
               {label}
             </p>
           ) : null}

@@ -55,7 +55,7 @@ export function PropertyCard({
         />
 
         {property.heroImage ? null : (
-          <span className="text-foreground-subtle absolute right-5 bottom-4 text-[0.625rem] font-medium tracking-[0.2em] uppercase">
+          <span className="text-foreground-subtle text-label tracking-label absolute right-5 bottom-4 font-medium uppercase">
             Material study
           </span>
         )}
@@ -71,7 +71,7 @@ export function PropertyCard({
               {property.name}
             </Link>
           </h3>
-          <p className="text-foreground-subtle text-xs font-medium tracking-[0.2em] uppercase">
+          <p className="text-foreground-subtle text-label tracking-label font-medium uppercase">
             {property.suburb}
           </p>
         </div>

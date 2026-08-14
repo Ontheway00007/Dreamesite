@@ -30,7 +30,7 @@ export function PropertyFeatures({ property }: PropertyFeaturesProps) {
     <div className="space-y-12">
       {groups.map((group) => (
         <section key={group.category}>
-          <h3 className="text-foreground-subtle text-[0.625rem] font-medium tracking-[0.2em] uppercase">
+          <h3 className="text-foreground-subtle text-label font-medium tracking-label uppercase">
             {group.heading}
           </h3>
 

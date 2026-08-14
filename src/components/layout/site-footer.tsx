@@ -33,7 +33,7 @@ export async function SiteFooter() {
     <footer className="hairline-top bg-background-alt py-16 md:py-20">
       <Container className="grid gap-12 md:grid-cols-[1.2fr_1fr_1fr]">
         <div className="max-w-sm space-y-4">
-          <p className="font-display text-2xl font-light tracking-[0.28em] uppercase">
+          <p className="font-display tracking-wordmark text-2xl font-light uppercase">
             {settings.companyName}
           </p>
           <Text size="small">{siteConfig.description}</Text>

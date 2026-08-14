@@ -45,7 +45,7 @@ export function ViewModeToggle({
             aria-pressed={isActive}
             onClick={() => onChange(option)}
             className={cn(
-              "inline-flex min-h-11 items-center gap-2 rounded-full px-5 text-xs font-medium tracking-[0.16em] uppercase transition-colors duration-(--duration-fast)",
+              "inline-flex min-h-11 items-center gap-2 rounded-full px-5 text-xs font-medium tracking-label uppercase transition-colors duration-(--duration-fast)",
               isActive
                 ? "bg-foreground text-foreground-inverse"
                 : "text-foreground-subtle hover:text-foreground",

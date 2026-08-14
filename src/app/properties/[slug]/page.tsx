@@ -244,7 +244,7 @@ export default async function PropertyPage({ params }: PropertyPageProps) {
         id="property-enquiry"
         eyebrow="Enquire"
         title="Ask us anything about this home."
-        description="Send through your questions and timeframe, and our team will reply with the detail you need — including location and availability."
+        description="Send through your questions and timeframe, and our team will reply with the detail you need, including location and availability."
       >
         <EnquiryForm
           propertyId={property.id}

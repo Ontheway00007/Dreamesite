@@ -44,7 +44,7 @@ export function PropertyLocationSection({
         </p>
 
         {label ? (
-          <p className="text-foreground-subtle mt-4 text-xs font-medium tracking-[0.16em] uppercase">
+          <p className="text-foreground-subtle mt-4 text-xs font-medium tracking-label uppercase">
             {label}
           </p>
         ) : null}
@@ -59,7 +59,7 @@ export function PropertyLocationSection({
           {visibility === "hidden" ? null : (
             <Link
               href={`${PROPERTIES_ROUTE}?property=${property.slug}`}
-              className="text-accent hover:text-accent-strong inline-flex items-center gap-2 text-xs font-medium tracking-[0.16em] uppercase transition-colors duration-(--duration-fast)"
+              className="text-accent hover:text-accent-strong inline-flex items-center gap-2 text-xs font-medium tracking-label uppercase transition-colors duration-(--duration-fast)"
             >
               <MapPin size={14} aria-hidden />
               Show on the map
@@ -72,7 +72,7 @@ export function PropertyLocationSection({
               href={directionsHref}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-accent hover:text-accent-strong inline-flex items-center gap-2 text-xs font-medium tracking-[0.16em] uppercase transition-colors duration-(--duration-fast)"
+              className="text-accent hover:text-accent-strong inline-flex items-center gap-2 text-xs font-medium tracking-label uppercase transition-colors duration-(--duration-fast)"
             >
               <Navigation size={14} aria-hidden />
               Open in Maps

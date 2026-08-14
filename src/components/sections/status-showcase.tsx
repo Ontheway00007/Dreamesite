@@ -141,7 +141,7 @@ export function StatusShowcase() {
             </p>
             <p className="text-foreground-subtle border-border max-w-xl border-t pt-8 text-sm">
               <span className={cn("font-medium", token.textClassName)}>
-                Next step —{" "}
+                Next step:{" "}
               </span>
               {entry.nextStep}
             </p>

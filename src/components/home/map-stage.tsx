@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { ArrowDown, ArrowRight, List } from "lucide-react";
+import { ArrowRight, List } from "lucide-react";
 
 import { PropertyMapFallback } from "@/components/map/property-map-fallback";
 import { PropertyMapLoader } from "@/components/map/property-map-loader";
 import { StatusGlyph } from "@/components/map/status-glyph";
+import { Button } from "@/components/ui/button";
 import { propertyStatusTokens } from "@/lib/design/property-status";
 import type { PortfolioSummary } from "@/lib/properties/portfolio-summary";
 import { PROPERTIES_ROUTE, propertyHref } from "@/lib/routes";
@@ -165,23 +166,35 @@ export function MapStage({ properties, summary, token }: MapStageProps) {
       {/* Brand block — compact, top-left, never centred over the map.     */}
       {/* Enhanced with three-way hover reaction: typography changes.      */}
       {/* ---------------------------------------------------------------- */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 px-5 pt-[calc(var(--header-height)+1.5rem)] sm:px-8 lg:px-12">
+      <div className="pointer-events-none absolute inset-x-0 top-0 px-(--container-gutter) pt-[calc(var(--header-height)+1.5rem)]">
         <div className="pointer-events-auto max-w-[calc(100%-4.5rem)] sm:max-w-md">
+          {/*
+            The page's only h1. It used to scale down to 0.98 and drop to 80%
+            opacity whenever a marker was hovered, which meant the primary
+            heading receded every time the cursor crossed the map. Dimming the
+            single most important element on the page as a side effect of
+            pointing at something else is the wrong trade, and the transform on
+            a `clamp()`-sized serif heading caused visible reflow of the
+            letterforms.
+
+            The third line still swaps to the hovered property's name, because
+            that is a genuine state change and it is the reason the heading is
+            worded the way it is. Only the colour moves now.
+          */}
           <h1
             id="map-stage-heading"
-            className={cn(
-              "font-display text-foreground text-[clamp(2.1rem,5vw,3.4rem)] leading-[0.98] tracking-[-0.02em] transition-all duration-500",
-              hoveredProperty && "scale-[0.98] opacity-80"
-            )}
+            className="font-display text-heading-1 text-foreground font-light"
           >
             Every home.
             <br />
             Every stage.
             <br />
-            <span className={cn(
-              "text-foreground-muted transition-colors duration-500",
-              hoveredProperty && "text-accent"
-            )}>
+            <span
+              className={cn(
+                "transition-colors duration-(--duration-base) ease-luxe",
+                hoveredProperty ? "text-accent" : "text-foreground-muted"
+              )}
+            >
               {hoveredProperty ? hoveredProperty.name : "One map."}
             </span>
           </h1>
@@ -204,23 +217,35 @@ export function MapStage({ properties, summary, token }: MapStageProps) {
             </span>
           </p>
 
+          {/*
+            The shared Button, not two hand-rolled anchors. These were the only
+            `rounded-lg` actions on a site where every other control is a pill,
+            and they carried their own padding, type size and hover rules, so
+            they drifted from the real buttons on the properties pages.
+          */}
           <div className="mt-5 flex flex-wrap items-center gap-3 sm:mt-6">
-            <a
+            <Button
               href={`${PROPERTIES_ROUTE}?status=move-in-ready`}
-              className="focus-visible:ring-ring bg-foreground text-foreground-inverse hover:bg-accent-strong group inline-flex items-center gap-2 rounded-lg px-5 py-3 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none"
+              variant="primary"
+              size="md"
+              className="press group"
+              iconRight={
+                <ArrowRight
+                  className="size-4 transition-transform duration-(--duration-hover) ease-luxe motion-safe:group-hover:translate-x-1"
+                  aria-hidden="true"
+                />
+              }
             >
               See what is available
-              <ArrowRight
-                className="size-4 transition-transform motion-safe:group-hover:translate-x-1"
-                aria-hidden="true"
-              />
-            </a>
-            <a
+            </Button>
+            <Button
               href={PROPERTIES_ROUTE}
-              className="focus-visible:ring-ring border-border-strong text-foreground hover:border-foreground hover:bg-surface/60 inline-flex items-center gap-2 rounded-lg border px-5 py-3 text-sm font-medium backdrop-blur-sm transition-colors focus-visible:ring-2 focus-visible:outline-none"
+              variant="outline"
+              size="md"
+              className="press backdrop-blur-sm"
             >
               All projects
-            </a>
+            </Button>
           </div>
         </div>
       </div>
@@ -228,8 +253,15 @@ export function MapStage({ properties, summary, token }: MapStageProps) {
       {/* ---------------------------------------------------------------- */}
       {/* Status rail — part of the map interface, not four cards.         */}
       {/* ---------------------------------------------------------------- */}
-      <div className="absolute inset-x-0 bottom-0 px-5 pb-6 sm:px-8 lg:px-12 lg:pb-8">
-        <div className="flex flex-col gap-4">
+      <div className="absolute inset-x-0 bottom-0 px-(--container-gutter) pb-6 lg:pb-8">
+        {/*
+          `items-start` so the disclosure below sizes to its own content. The
+          flex column used to stretch its children, and the scroll cue that has
+          been removed came with an empty spacer that happened to hold the
+          disclosure at its natural width. Without an explicit alignment it
+          spanned the full viewport.
+        */}
+        <div className="flex flex-col items-start gap-4">
           <StatusRail
             summary={summary}
             active={statusFilter}
@@ -237,25 +269,19 @@ export function MapStage({ properties, summary, token }: MapStageProps) {
             disabled={!hasProperties}
           />
 
-          <div className="flex items-center justify-between gap-4">
-            <PropertyDisclosure properties={properties} />
+          {/*
+            There was a "Scroll" label with a permanently bouncing arrow here.
+            Both are gone.
 
-            {/*
-              The scroll cue sits left of centre rather than bottom-right, where
-              the zoom controls and the Mapbox attribution now live. Attribution
-              is required, so the cue moves rather than the credit.
-            */}
-            {hasProperties ? (
-              <p
-                aria-hidden="true"
-                className="text-foreground-subtle hidden items-center gap-2 text-xs tracking-[0.18em] uppercase sm:flex"
-              >
-                Scroll
-                <ArrowDown className="size-3.5 motion-safe:animate-bounce" />
-              </p>
-            ) : null}
-            <span className="hidden lg:block lg:w-40" aria-hidden="true" />
-          </div>
+            A visitor looking at the top of a page does not need to be told that
+            pages scroll, and the cue was `aria-hidden`, so it was decoration by
+            its own admission. The bounce was also an infinite animation with no
+            state behind it, running for as long as the tab was open on the one
+            screen that is already carrying an interactive Mapbox canvas.
+
+            The empty spacer that balanced the cue goes with it.
+          */}
+          <PropertyDisclosure properties={properties} />
         </div>
       </div>
 
@@ -356,7 +382,7 @@ function StatusRail({ summary, active, onToggle, disabled }: StatusRailProps) {
                 <span className="text-foreground text-sm font-medium tabular-nums">
                   {count}
                 </span>
-                <span className="text-foreground-subtle text-[0.68rem] whitespace-nowrap sm:text-[0.7rem]">
+                <span className="text-foreground-subtle text-label whitespace-nowrap sm:text-label">
                   {token.label}
                 </span>
               </span>
@@ -393,7 +419,7 @@ function PropertyDisclosure({
 
   return (
     <details className="border-border bg-surface/80 group max-w-full rounded-xl border backdrop-blur-xl">
-      <summary className="focus-visible:ring-ring text-foreground-muted hover:text-foreground flex cursor-pointer list-none items-center gap-2 px-3.5 py-2.5 text-xs tracking-[0.14em] uppercase transition-colors focus-visible:ring-2 focus-visible:outline-none">
+      <summary className="focus-visible:ring-ring text-foreground-muted hover:text-foreground flex cursor-pointer list-none items-center gap-2 px-3.5 py-2.5 text-xs tracking-label uppercase transition-colors focus-visible:ring-2 focus-visible:outline-none">
         <List className="size-3.5" aria-hidden="true" />
         Browse as a list
       </summary>

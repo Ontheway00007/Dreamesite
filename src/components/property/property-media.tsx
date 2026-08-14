@@ -59,7 +59,7 @@ export function PropertyMedia({
       {showPreviewLabel ? (
         <span
           className={cn(
-            "text-foreground-subtle absolute right-5 bottom-4 text-[0.625rem] font-medium tracking-[0.2em] uppercase",
+            "text-foreground-subtle absolute right-5 bottom-4 text-label font-medium tracking-label uppercase",
             labelClassName,
           )}
         >

@@ -1,8 +1,10 @@
 import { ArrowRight } from "lucide-react";
 
+import { Container } from "@/components/layout/container";
 import { PropertyMedia } from "@/components/property/property-media";
 import { PropertySpecs } from "@/components/property/property-specs";
-import { RevealGroup, RevealItem } from "@/components/motion/reveal";
+import { Reveal, RevealGroup, RevealItem } from "@/components/motion/reveal";
+import { Button } from "@/components/ui/button";
 import { ENQUIRY_ANCHOR, propertyHref } from "@/lib/routes";
 import { propertiesByStatus } from "@/lib/properties/portfolio-summary";
 import { getProperties } from "@/lib/properties/repository";
@@ -11,35 +13,41 @@ import { cn } from "@/lib/utils/cn";
 import type { Property } from "@/types";
 
 /**
- * Available now — the commercial section with purposeful micro-interactions.
- * 
- * ## Phase 7A Enhancement (Intensity: 9/10)
- * 
- * Light surface breaks the dark rhythm. Micro-interactions are purposeful:
- * hover reveals depth, price highlights to show commercial intent, specs
- * animate to show measurements matter. Every animation explains something.
- * 
+ * Available now: the one section on the page that inverts.
+ *
  * ## Why this section exists
- * 
- * Move-in-ready homes are actionable today. Portfolio pieces are retrospective.
- * Mixing them would flatten that distinction. This section gets its own visual
- * treatment (light background) and enhanced interactions because these homes
- * demand attention differently.
- * 
- * ## Micro-interactions with purpose
- * 
- * - Image scale on hover = "see more detail"
- * - Price highlight = "commercial availability"
- * - Specs slide = "precise measurements"
- * - Border pulse = "active listing"
- * - CTA arrow extends = "clear path forward"
- * 
- * Not decoration. Information architecture through motion.
- * 
+ *
+ * Move-in-ready homes are actionable today. Portfolio pieces are
+ * retrospective. Mixing them would flatten that distinction, so this section
+ * takes the inverted surface and the rest of the page does not. Inverting
+ * exactly one section is a deliberate device; inverting several would just make
+ * the page feel like it changes identity as you scroll.
+ *
+ * ## Two corrections to the Phase 7A version
+ *
+ * **Colour.** The card title took `group-hover:text-black`. In the dark theme
+ * this section renders as a pale panel and black text on it was fine, which is
+ * why it went unnoticed. In the daylight theme `--foreground` is `#211e1a`, so
+ * the panel is dark and its text is light: hovering a card turned the title
+ * black on near-black and the heading vanished. It underlines instead now; see
+ * the note on the heading for why the accent is not the right repair on an
+ * inverted surface. A hard-coded `rgba(194,147,91,0.3)` glow had the same
+ * problem in reverse, ignoring the daylight theme's warmer shadow base, and is
+ * a token now. A literal colour in a two-theme system is a bug with a delay
+ * on it.
+ *
+ * **Timing.** The header used load-time keyframes with delays of 0.2s to 0.4s.
+ * This section sits several screens down, so those animations had always
+ * finished before anybody scrolled to it: the entrance was being spent on an
+ * empty viewport. They are in-view reveals now, which is what the rest of the
+ * page uses and what the effect was written to be. The card hover states came
+ * down from 500ms to 900ms to a single move inside 200ms, for the reasons set
+ * out at the top of `selected-projects.tsx`.
+ *
  * ## Honest empty state
- * 
- * Zero available = honest statement + enquiry CTA.
- * Better than silence or fake listings.
+ *
+ * Zero available means an honest statement and an enquiry route, which is
+ * better than silence or a fake listing.
  *
  * ## Do not add "use client" to this file
  *
@@ -48,8 +56,8 @@ import type { Property } from "@/types";
  * loop, and because the body awaits `getProperties()`, every iteration issues a
  * Supabase request from the browser.
  *
- * `RevealGroup` and `RevealItem` are already Client Components, and a Server
- * Component may render one. No directive is needed here to use them.
+ * `Reveal`, `RevealGroup` and `RevealItem` are already Client Components, and a
+ * Server Component may render one. No directive is needed here to use them.
  */
 export async function AvailableNow() {
   const properties = await getProperties();
@@ -60,58 +68,66 @@ export async function AvailableNow() {
       aria-labelledby="available-now-heading"
       className="bg-foreground text-foreground-inverse relative overflow-hidden py-20 lg:py-28"
     >
-      <div className="relative mx-auto max-w-[110rem] px-5 sm:px-8 lg:px-12">
-        {/* Header with staggered reveal */}
-        <div className="flex flex-wrap items-end justify-between gap-6">
-          <div className="max-w-2xl">
-            <p className="text-foreground-inverse/55 text-[0.7rem] tracking-[0.22em] uppercase motion-safe:animate-[fadeIn_0.6s_var(--ease-entrance)_0.2s_both]">
-              Ready to inspect
-            </p>
-            <h2
-              id="available-now-heading"
-              className="font-display mt-3 text-[clamp(1.9rem,3.6vw,3rem)] leading-[1.05] tracking-[-0.02em] motion-safe:animate-[fadeIn_0.6s_var(--ease-entrance)_0.3s_both]"
-            >
-              {available.length > 0
-                ? "Available now"
-                : "Nothing available this week"}
-            </h2>
+      <Container width="stage" className="relative">
+        <Reveal>
+          <div className="flex flex-wrap items-end justify-between gap-6">
+            <div className="max-w-2xl">
+              <p className="text-foreground-inverse/55 text-eyebrow tracking-eyebrow font-medium uppercase">
+                Ready to inspect
+              </p>
+              <h2
+                id="available-now-heading"
+                className="font-display text-heading-2 mt-3 font-light"
+              >
+                {available.length > 0
+                  ? "Available now"
+                  : "Nothing available this week"}
+              </h2>
+            </div>
+
+            {available.length > 0 ? (
+              <p className="text-foreground-inverse/65 max-w-sm text-sm leading-relaxed">
+                {available.length === 1
+                  ? "One home is finished and ready to walk through."
+                  : `${available.length} homes are finished and ready to walk through.`}
+              </p>
+            ) : null}
           </div>
+        </Reveal>
 
-          {available.length > 0 ? (
-            <p className="text-foreground-inverse/65 max-w-sm text-sm leading-relaxed motion-safe:animate-[fadeIn_0.6s_var(--ease-entrance)_0.4s_both]">
-              {available.length === 1
-                ? "One home is finished and ready to walk through."
-                : `${available.length} homes are finished and ready to walk through.`}
-            </p>
-          ) : null}
-        </div>
-
-        {/* Empty state with refined interaction */}
         {available.length === 0 ? (
-          <div className="border-foreground-inverse/15 mt-10 max-w-2xl border-t pt-8 motion-safe:animate-[fadeIn_0.6s_var(--ease-entrance)_0.5s_both]">
-            <p className="text-foreground-inverse/70 text-base leading-relaxed">
-              Every home we have built is either still on site or already handed
-              over. Tell us the suburb and timeframe you are considering and we
-              will let you know the moment something is ready.
-            </p>
-            <a
-              href={ENQUIRY_ANCHOR}
-              className="focus-visible:ring-ring bg-foreground-inverse text-foreground group relative mt-6 inline-flex items-center gap-2 overflow-hidden rounded-lg px-5 py-3 text-sm font-medium transition-all hover:gap-3 focus-visible:ring-2 focus-visible:outline-none"
-            >
-              {/* Hover background that slides in */}
-              <span 
-                aria-hidden="true"
-                className="from-foreground-inverse to-foreground-inverse/90 absolute inset-0 translate-x-[-100%] bg-gradient-to-r transition-transform duration-500 motion-safe:group-hover:translate-x-0"
-              />
-              <span className="relative">Tell us what you are after</span>
-              <ArrowRight
-                className="relative size-4 transition-transform duration-300 motion-safe:group-hover:translate-x-1"
-                aria-hidden="true"
-              />
-            </a>
-          </div>
+          <Reveal delay={0.08}>
+            <div className="border-foreground-inverse/15 mt-10 max-w-2xl border-t pt-8">
+              <p className="text-foreground-inverse/70 text-base leading-relaxed">
+                Every home we have built is either still on site or already
+                handed over. Tell us the suburb and timeframe you are considering
+                and we will let you know the moment something is ready.
+              </p>
+              {/*
+                The shared Button rather than a hand-rolled anchor. Every action
+                elsewhere on the site is a pill; this one was a 0.5rem
+                rectangle, and it also animated `gap` on hover, which is a
+                layout property and so forces a reflow on every frame of the
+                transition. The arrow translates instead.
+              */}
+              <Button
+                href={ENQUIRY_ANCHOR}
+                variant="accent"
+                size="md"
+                className="press group mt-6"
+                iconRight={
+                  <ArrowRight
+                    className="size-4 transition-transform duration-(--duration-hover) ease-luxe motion-safe:group-hover:translate-x-1"
+                    aria-hidden="true"
+                  />
+                }
+              >
+                Tell us what you are after
+              </Button>
+            </div>
+          </Reveal>
         ) : (
-          <RevealGroup stagger={0.1}>
+          <RevealGroup stagger={0.08}>
             <ul className="mt-12 grid gap-10 lg:mt-16 lg:grid-cols-2 lg:gap-x-10 lg:gap-y-16">
               {available.map((property, index) => (
                 <RevealItem key={property.id}>
@@ -125,20 +141,23 @@ export async function AvailableNow() {
             </ul>
           </RevealGroup>
         )}
-      </div>
+      </Container>
     </section>
   );
 }
 
 /**
- * Available card with layered micro-interactions.
- * 
- * Each interaction has purpose:
- * - Border pulse = "active listing, available now"
- * - Image scale = "see detail"
- * - Price highlight = "commercial focus"
- * - Specs slide = "measurements are precise"
- * - Arrow extends = "clear next step"
+ * One available home.
+ *
+ * Hover does two things: the photograph opens up and the frame takes an accent
+ * ring. Everything else holds still. The version this replaces moved nine
+ * separate elements at once, including rotating the photograph by half a degree
+ * and growing the gap inside the call to action, and the price sat in a box
+ * that lifted and changed colour while an underline swept in beneath it.
+ *
+ * The price is the most consequential number on the card. It should be easy to
+ * read at rest, which means it should not be in motion at the moment someone
+ * looks at it.
  */
 function AvailableCard({
   property,
@@ -153,19 +172,30 @@ function AvailableCard({
     <li className={featured ? "lg:col-span-2" : undefined}>
       <a
         href={propertyHref(property.slug)}
-        className="focus-visible:ring-ring group block focus-visible:ring-2 focus-visible:outline-none"
+        className="focus-visible:ring-ring press group block focus-visible:ring-2 focus-visible:outline-none"
       >
-        {/* Photography container with purposeful border pulse */}
+        {/*
+          The frame takes an accent ring on hover, which is the one signal that
+          says "this listing is live". `shadow-accent` replaces the literal
+          `rgba(194,147,91,0.3)` that used to be here: the token is redefined
+          with a warmer base in the daylight theme, the literal was not.
+        */}
         <div
           className={cn(
-            "bg-foreground-inverse/5 ring-foreground-inverse/5 relative w-full overflow-hidden rounded-xl shadow-soft ring-1 transition-all duration-700",
-            // Border pulses to accent on hover = "active, available"
-            "motion-safe:group-hover:ring-2 motion-safe:group-hover:ring-accent/40 motion-safe:group-hover:shadow-[0_8px_32px_-8px_rgba(194,147,91,0.3)]",
+            "bg-foreground-inverse/5 ring-foreground-inverse/5 shadow-soft relative w-full overflow-hidden rounded-xl ring-1",
+            "transition-shadow duration-(--duration-hover) ease-luxe",
+            "motion-safe:group-hover:ring-accent/40 motion-safe:group-hover:shadow-accent",
+            "motion-safe:group-focus-visible:ring-accent/40 motion-safe:group-focus-visible:shadow-accent",
             featured ? "aspect-16/9 lg:aspect-[2.6/1]" : "aspect-4/3"
           )}
         >
-          {/* Image with scale and slight rotation for depth */}
-          <div className="absolute inset-0 transition-all duration-[900ms] ease-out motion-safe:group-hover:scale-105 motion-safe:group-hover:rotate-[0.5deg]">
+          {/*
+            Scale only. The half-degree rotation that used to accompany it read
+            as the photograph slipping in its frame rather than as depth, and on
+            an image of a house every straight line in the composition tilts with
+            it.
+          */}
+          <div className="absolute inset-0 transition-transform duration-(--duration-hover) ease-luxe motion-safe:group-hover:scale-[1.03] motion-safe:group-focus-visible:scale-[1.03]">
             <PropertyMedia
               property={property}
               sizes={
@@ -178,64 +208,67 @@ function AvailableCard({
             />
           </div>
 
-          {/* Subtle gradient overlay that shifts on hover */}
           <div
             aria-hidden="true"
-            className="from-foreground-inverse/10 absolute inset-0 bg-gradient-to-t to-transparent opacity-100 transition-opacity duration-700 motion-safe:group-hover:opacity-0"
+            className="from-foreground-inverse/10 absolute inset-0 bg-gradient-to-t to-transparent transition-opacity duration-(--duration-hover) ease-luxe motion-safe:group-hover:opacity-0 motion-safe:group-focus-visible:opacity-0"
           />
         </div>
 
-        {/* Content with staggered micro-interactions */}
         <div className="mt-5 flex flex-wrap items-start justify-between gap-4">
-          <div className="transition-transform duration-500 motion-safe:group-hover:-translate-y-0.5">
-            <p className="text-foreground-inverse/55 motion-safe:group-hover:text-foreground-inverse/70 text-[0.7rem] tracking-[0.18em] uppercase transition-colors duration-300">
+          <div>
+            <p className="text-foreground-inverse/55 text-label tracking-label uppercase">
               {property.suburb}
               {property.state ? `, ${property.state}` : ""}
             </p>
-            <h3 className="font-display mt-2 text-xl leading-tight transition-colors duration-300 sm:text-2xl motion-safe:group-hover:text-black">
+            {/*
+              The hover signal here is an underline, not a colour.
+
+              What was here was `group-hover:text-black`, which vanished against
+              the daylight theme's dark panel. The obvious repair is
+              `text-accent`, and it is what the cards on `bg-background` use, but
+              it does not survive a contrast check on this surface: brass on the
+              dark theme's pale panel measures about 2.4:1, and the daylight
+              theme's darker brass on its dark panel about 3.2:1. The first
+              fails outright and the second only passes while the heading is
+              large enough to count as large text, which it is not at narrow
+              viewports where the clamp bottoms out at 22px.
+
+              An underline costs no contrast in either theme, and on a title that
+              is genuinely a link it is the more honest affordance anyway. The
+              accent still appears on hover, on the ring around the photograph,
+              where it is decoration and carries no text.
+            */}
+            <h3 className="font-display text-heading-3 mt-2 underline decoration-transparent decoration-1 underline-offset-4 transition-[text-decoration-color] duration-(--duration-hover) group-hover:decoration-current group-focus-visible:decoration-current">
               {property.name}
             </h3>
           </div>
 
-          {/* Price with purposeful highlight = "commercial intent" */}
+          {/* The price holds still. See the note above this component. */}
           {priceLabel ? (
-            <div className="bg-foreground-inverse/5 relative shrink-0 overflow-hidden rounded-md px-3 py-1.5 transition-all duration-500 motion-safe:group-hover:-translate-y-0.5 motion-safe:group-hover:bg-accent/10">
-              {/* Animated underline that reveals on hover */}
-              <span 
-                aria-hidden="true"
-                className="absolute inset-x-0 bottom-0 h-0.5 translate-x-[-100%] bg-accent transition-transform duration-500 motion-safe:group-hover:translate-x-0"
-              />
-              <p className="text-foreground-inverse/80 motion-safe:group-hover:text-foreground-inverse relative text-sm font-medium transition-colors duration-300">
+            <div className="bg-foreground-inverse/5 shrink-0 rounded-md px-3 py-1.5">
+              <p className="text-foreground-inverse/80 text-sm font-medium">
                 {priceLabel}
               </p>
             </div>
           ) : null}
         </div>
 
-        {/* Summary with subtle fade */}
-        <p className="text-foreground-inverse/65 motion-safe:group-hover:text-foreground-inverse/80 mt-3 max-w-xl text-sm leading-relaxed transition-all duration-300">
+        <p className="text-foreground-inverse/65 mt-3 max-w-xl text-sm leading-relaxed">
           {property.summary}
         </p>
 
-        {/* Specs and CTA with choreographed reveal */}
-        <div className="border-foreground-inverse/12 motion-safe:group-hover:border-foreground-inverse/20 mt-5 flex flex-wrap items-center gap-6 border-t pt-5 transition-all duration-500">
-          {/* Specs slide in from left = "precise measurements" */}
-          <div className="transition-all duration-500 motion-safe:group-hover:translate-x-1">
-            <PropertySpecs
-              property={property}
-              size="sm"
-              includeHouseSize
-              className="[&_*]:!text-foreground-inverse/70 [&_*]:transition-colors [&_*]:duration-300 motion-safe:group-hover:[&_*]:!text-foreground-inverse/90"
-            />
-          </div>
+        <div className="border-foreground-inverse/12 mt-5 flex flex-wrap items-center gap-6 border-t pt-5">
+          <PropertySpecs
+            property={property}
+            size="sm"
+            includeHouseSize
+            className="[&_*]:!text-foreground-inverse/70"
+          />
 
-          {/* CTA with extending arrow = "clear path forward" */}
-          <span className="inline-flex items-center gap-2 text-sm font-medium transition-all duration-300 motion-safe:group-hover:gap-3">
-            <span className="motion-safe:group-hover:text-foreground-inverse transition-colors duration-300">
-              Explore this home
-            </span>
+          <span className="inline-flex items-center gap-2 text-sm font-medium">
+            Explore this home
             <ArrowRight
-              className="size-4 transition-all duration-300 motion-safe:group-hover:translate-x-2 motion-safe:group-hover:text-accent"
+              className="size-4 transition-transform duration-(--duration-hover) ease-luxe motion-safe:group-hover:translate-x-1 motion-safe:group-focus-visible:translate-x-1"
               aria-hidden="true"
             />
           </span>

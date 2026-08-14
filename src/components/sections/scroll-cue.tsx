@@ -42,7 +42,7 @@ export function ScrollCue({
         className,
       )}
     >
-      <span className="text-[0.625rem] font-medium tracking-[0.28em] uppercase">
+      <span className="text-label font-medium tracking-wordmark uppercase">
         Scroll
       </span>
       <span className="bg-border relative h-14 w-px overflow-hidden">

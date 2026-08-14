@@ -63,13 +63,42 @@ export function SiteHeader({
     }
   }, []);
 
+  /**
+   * Whether the page has scrolled away from the top, which is the only thing
+   * the header's border and shadow depend on.
+   *
+   * This used to be a `scroll` listener reading `window.scrollY`. That runs on
+   * every scroll frame, on the main thread, for the entire life of the page, to
+   * answer a question whose answer changes twice. It was registered `passive`,
+   * so it never blocked scrolling, but the work was still unnecessary.
+   *
+   * An `IntersectionObserver` watching a 24px sentinel at the top of the
+   * document answers the same question from the compositor and only calls back
+   * when the answer actually flips. The sentinel is created here rather than
+   * rendered, because this component is `fixed` and so anything inside it is
+   * fixed too: the element has to live in the normal flow of the document to
+   * scroll out of view at all.
+   */
   useEffect(() => {
-    const onScroll = () => setIsScrolled(window.scrollY > 24);
+    const sentinel = document.createElement("div");
 
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
+    sentinel.setAttribute("aria-hidden", "true");
+    sentinel.style.cssText =
+      "position:absolute;top:0;left:0;width:1px;height:24px;pointer-events:none;";
 
-    return () => window.removeEventListener("scroll", onScroll);
+    document.body.prepend(sentinel);
+
+    const observer = new IntersectionObserver(
+      ([entry]) => setIsScrolled(!entry.isIntersecting),
+      { threshold: 0 },
+    );
+
+    observer.observe(sentinel);
+
+    return () => {
+      observer.disconnect();
+      sentinel.remove();
+    };
   }, []);
 
   // Freeze the page behind the menu, and always release it on unmount.
@@ -172,7 +201,7 @@ export function SiteHeader({
       <Container className="flex h-(--header-height) items-center justify-between gap-6">
         <Link
           href="/"
-          className="font-display text-xl font-light tracking-[0.28em] uppercase"
+          className="font-display tracking-wordmark text-xl font-light uppercase"
           onClick={() => close(false)}
         >
           {companyName}
@@ -184,7 +213,7 @@ export function SiteHeader({
               key={link.href}
               href={link.href}
               onClick={(event) => handleNavClick(event, link.href)}
-              className="text-foreground-muted hover:text-foreground text-xs font-medium tracking-[0.2em] uppercase transition-colors duration-(--duration-fast)"
+              className="text-foreground-muted hover:text-foreground text-label tracking-label font-medium uppercase transition-colors duration-(--duration-fast)"
             >
               {link.label}
             </Link>

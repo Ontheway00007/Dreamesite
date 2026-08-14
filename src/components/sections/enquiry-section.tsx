@@ -64,7 +64,7 @@ export async function EnquirySection({
 
         <div className="space-y-8">
           <div>
-            <h3 className="text-foreground-subtle text-[0.625rem] font-medium tracking-[0.2em] uppercase">
+            <h3 className="text-foreground-subtle text-label font-medium tracking-label uppercase">
               Prefer to call
             </h3>
             <p className="mt-3">
@@ -78,7 +78,7 @@ export async function EnquirySection({
           </div>
 
           <div>
-            <h3 className="text-foreground-subtle text-[0.625rem] font-medium tracking-[0.2em] uppercase">
+            <h3 className="text-foreground-subtle text-label font-medium tracking-label uppercase">
               Or email
             </h3>
             <p className="mt-3">
@@ -92,7 +92,7 @@ export async function EnquirySection({
           </div>
 
           <div>
-            <h3 className="text-foreground-subtle text-[0.625rem] font-medium tracking-[0.2em] uppercase">
+            <h3 className="text-foreground-subtle text-label font-medium tracking-label uppercase">
               Where we build
             </h3>
             <p className="text-foreground-muted mt-3 text-sm leading-relaxed">

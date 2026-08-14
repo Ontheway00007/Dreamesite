@@ -18,7 +18,7 @@ const PropertyMap = dynamic(() => import("@/components/map/property-map"), {
       role="status"
       className="bg-background-alt grid h-full w-full place-items-center rounded-xl"
     >
-      <p className="text-foreground-subtle text-xs font-medium tracking-[0.2em] uppercase">
+      <p className="text-foreground-subtle text-xs font-medium tracking-label uppercase">
         Loading map
       </p>
     </div>

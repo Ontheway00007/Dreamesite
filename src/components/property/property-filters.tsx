@@ -73,7 +73,7 @@ export function PropertyFilters({
               aria-pressed={isActive}
               onClick={() => onChange("status", status)}
               className={cn(
-                "inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-medium tracking-[0.12em] uppercase transition-colors duration-(--duration-fast)",
+                "inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-medium tracking-label uppercase transition-colors duration-(--duration-fast)",
                 isActive
                   ? "border-accent bg-accent-soft text-foreground"
                   : "border-border text-foreground-subtle hover:text-foreground hover:border-border-strong",
@@ -102,7 +102,7 @@ export function PropertyFilters({
         <div className="relative">
           <label
             htmlFor="filter-suburb"
-            className="text-foreground-subtle mb-2 block text-[0.625rem] font-medium tracking-[0.2em] uppercase"
+            className="text-foreground-subtle mb-2 block text-label font-medium tracking-label uppercase"
           >
             Suburb
           </label>
@@ -127,7 +127,7 @@ export function PropertyFilters({
         <div className="relative">
           <label
             htmlFor="filter-beds"
-            className="text-foreground-subtle mb-2 block text-[0.625rem] font-medium tracking-[0.2em] uppercase"
+            className="text-foreground-subtle mb-2 block text-label font-medium tracking-label uppercase"
           >
             Bedrooms
           </label>
@@ -153,7 +153,7 @@ export function PropertyFilters({
         <div className="relative sm:col-span-2 xl:col-span-1">
           <label
             htmlFor="filter-query"
-            className="text-foreground-subtle mb-2 block text-[0.625rem] font-medium tracking-[0.2em] uppercase"
+            className="text-foreground-subtle mb-2 block text-label font-medium tracking-label uppercase"
           >
             Search
           </label>
@@ -176,7 +176,7 @@ export function PropertyFilters({
           <button
             type="button"
             onClick={onReset}
-            className="text-foreground-subtle hover:text-foreground border-border hover:border-border-strong inline-flex h-11 items-center justify-center gap-2 self-end rounded-lg border px-4 text-xs font-medium tracking-[0.12em] uppercase transition-colors duration-(--duration-fast) sm:col-span-2 xl:col-span-1"
+            className="text-foreground-subtle hover:text-foreground border-border hover:border-border-strong inline-flex h-11 items-center justify-center gap-2 self-end rounded-lg border px-4 text-xs font-medium tracking-label uppercase transition-colors duration-(--duration-fast) sm:col-span-2 xl:col-span-1"
           >
             <X size={14} aria-hidden />
             Reset

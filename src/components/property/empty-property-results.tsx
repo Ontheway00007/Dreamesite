@@ -32,7 +32,7 @@ export function EmptyPropertyResults({
       <button
         type="button"
         onClick={onReset}
-        className="text-accent hover:text-accent-strong mt-6 text-xs font-medium tracking-[0.16em] uppercase transition-colors duration-(--duration-fast)"
+        className="text-accent hover:text-accent-strong mt-6 text-xs font-medium tracking-label uppercase transition-colors duration-(--duration-fast)"
       >
         Clear all filters
       </button>

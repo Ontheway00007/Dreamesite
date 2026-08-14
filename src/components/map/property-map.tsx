@@ -717,7 +717,7 @@ export default function PropertyMap({
           className="bg-background-alt absolute inset-0 grid place-items-center"
           role="status"
         >
-          <p className="text-foreground-subtle text-xs font-medium tracking-[0.2em] uppercase">
+          <p className="text-foreground-subtle text-xs font-medium tracking-label uppercase">
             Loading map
           </p>
         </div>

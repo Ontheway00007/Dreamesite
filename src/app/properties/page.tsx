@@ -53,7 +53,7 @@ export default async function PropertiesPage() {
           </Heading>
           <Text size="lead" className="mt-6">
             Each marker is one of our homes in {serviceAreas.join(", ")}. Filter
-            by status, suburb or bedrooms — the list beside the map carries the
+            by status, suburb or bedrooms. The list beside the map carries the
             same information as text.
           </Text>
         </div>

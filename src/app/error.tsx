@@ -52,7 +52,7 @@ export default function PublicError({
           This page could not be loaded.
         </Heading>
         <Text size="lead" className="mt-7 max-w-xl">
-          The problem is on our side, not yours. Trying again often works — if it
+          The problem is on our side, not yours. Trying again often works. If it
           does not, the homes listing and the homepage are unaffected.
         </Text>
 
