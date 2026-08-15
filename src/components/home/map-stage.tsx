@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ArrowRight, List } from "lucide-react";
 
-import { PropertyMapFallback } from "@/components/map/property-map-fallback";
+import { CorridorMap } from "@/components/map/corridor-map";
 import { PropertyMapLoader } from "@/components/map/property-map-loader";
 import { StatusGlyph } from "@/components/map/status-glyph";
 import { Button } from "@/components/ui/button";
@@ -119,7 +119,31 @@ export function MapStage({ properties, summary, token }: MapStageProps) {
       {/* ---------------------------------------------------------------- */}
       <div className="absolute inset-0">
         {token === null ? (
-          <PropertyMapFallback reason="no-token" className="rounded-none" />
+          /*
+            The corridor map, not the "Map unavailable" card that used to render
+            here. This is the first viewport of the site, directly under an `h1`
+            that reads "Every home. Every stage. One map.", so an apology in this
+            slot undermined the sentence above it on every deployment without a
+            Mapbox token.
+
+            Extra padding because this stage overlays its own chrome on the map:
+            the heading occupies the top left and the status rail the bottom left,
+            where a marker at the extreme edge of the data would otherwise land.
+            `showLegend` stays off for the same reason it is off for Mapbox, and
+            `onHover` is wired so the heading's third line still swaps to the
+            hovered home. Keyboard focus reports hover too, so tabbing the map
+            drives that heading exactly as pointing does.
+          */
+          <CorridorMap
+            properties={visibleProperties}
+            selectedId={selected?.id ?? null}
+            onSelect={setSelectedId}
+            onHover={setHoveredPropertyId}
+            resetToken={resetToken}
+            showLegend={false}
+            padding={0.19}
+            className="h-full w-full"
+          />
         ) : (
           <PropertyMapLoader
             properties={visibleProperties}

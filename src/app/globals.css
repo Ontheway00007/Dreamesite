@@ -541,6 +541,136 @@ html[data-theme="light"] {
     }
   }
 
+  /* ------------------------------------------------------------------------
+     The corridor map.
+
+     Every rule here lives inside this `no-preference` block, and none of the
+     from-states are expressed as a static class. That combination is what makes
+     the map safe under `prefers-reduced-motion`: a visitor who has asked for
+     reduced motion gets no `animation` property at all, so the spine renders at
+     `stroke-dashoffset: 0` (drawn), the markers at their natural opacity and
+     scale, and the zones fully present. Nothing has to be un-hidden.
+
+     The alternative, putting `opacity-0` on the marker and animating it away,
+     would leave the whole map invisible for those visitors. That failure mode
+     already happened once in this codebase, which is why `use-gsap.ts` carries a
+     comment about it.
+     ------------------------------------------------------------------------ */
+
+  /*
+    The corridor spine drawing itself, north to south.
+
+    Paired with `pathLength="1"` and `stroke-dasharray="1"` on the element, so
+    the dash length is the whole path regardless of its real length and the
+    offset can be animated as a plain 1 to 0. Slower than a UI transition
+    because this is a load-time entrance seen once, not a response to input.
+  */
+  @keyframes corridor-draw {
+    from {
+      stroke-dashoffset: 1;
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  .corridor-spine {
+    animation: corridor-draw 1.5s var(--ease-entrance) both;
+  }
+
+  /*
+    Suburb zones and their labels settling in behind the spine.
+
+    Scaling from 0.92 rather than from 0: nothing in the physical world appears
+    out of nothing, and a shape that grows from a point reads as a UI trick where
+    one that swells slightly reads as focus arriving.
+  */
+  @keyframes corridor-zone-in {
+    from {
+      opacity: 0;
+      transform: scale(0.92);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  .corridor-zone {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: corridor-zone-in var(--duration-slow) var(--ease-entrance) both;
+    animation-delay: var(--enter-delay, 0s);
+  }
+
+  .corridor-zone-label {
+    animation: enter-fade var(--duration-slow) var(--ease-entrance) both;
+    animation-delay: var(--enter-delay, 0s);
+  }
+
+  /*
+    Markers blooming in, staggered along the corridor.
+
+    The stagger is set per marker as `--enter-delay` in the component, at 55ms
+    apart, which is inside the 30-80ms band where a stagger still reads as one
+    gesture rather than as a queue.
+
+    This animates the positioning wrapper, which owns `translate(-50%, -50%)`, so
+    the keyframes have to restate that translation or the marker would snap to
+    its top-left corner for the duration of the entrance. The hover scale lives
+    on the button inside, precisely so the two never write `transform` on the
+    same element.
+  */
+  @keyframes corridor-marker-in {
+    from {
+      opacity: 0;
+      transform: translateY(-0.4rem) scale(0.86);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  .corridor-marker {
+    animation: corridor-marker-in var(--duration-slow) var(--ease-entrance) both;
+    animation-delay: var(--enter-delay, 0s);
+  }
+
+  /*
+    The dimension lines to the selected home, drawn like an architect ruling
+    guides out to the edges of a sheet. Fast, because unlike the entrance this is
+    a response to a click and the visitor is waiting for it.
+  */
+  .corridor-guides {
+    animation: enter-fade var(--duration-base) var(--ease-entrance) both;
+  }
+
+  /*
+    Availability pulse.
+
+    An infinite loop, which this file otherwise avoids. It earns it by carrying
+    real state: it marks the homes that are finished and can be walked through
+    today, which is the single most actionable fact on the map. It is slow (2.9s)
+    and low-contrast so it reads as a heartbeat rather than an alert, and it is
+    only ever attached to `move-in-ready`.
+  */
+  @keyframes corridor-pulse {
+    0% {
+      opacity: 0.5;
+      transform: scale(1);
+    }
+    70%,
+    100% {
+      opacity: 0;
+      transform: scale(2.2);
+    }
+  }
+
+  .corridor-pulse {
+    animation: corridor-pulse 2.9s var(--ease-luxe) infinite;
+  }
+
   /* Fade and rise. The default entrance. */
   [data-enter] {
     animation: enter-rise var(--duration-slow) var(--ease-entrance) both;

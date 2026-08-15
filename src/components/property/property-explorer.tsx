@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 
 import { RotateCcw } from "lucide-react";
 
-import { PropertyMapFallback } from "@/components/map/property-map-fallback";
+import { CorridorMap } from "@/components/map/corridor-map";
 import { PropertyMapLoader } from "@/components/map/property-map-loader";
 import { MobilePropertySheet } from "@/components/property/mobile-property-sheet";
 import { PropertyFilterSheet } from "@/components/property/property-filter-sheet";
@@ -147,6 +147,12 @@ export function PropertyExplorer({ properties }: PropertyExplorerProps) {
             never the only way to read this page.
           </p>
 
+          {/*
+            With a token, the real map. Without one, the corridor map rather than
+            the "Map unavailable" card that used to sit here: this page's whole
+            layout is a list beside a map, and half of it being an apology made
+            the other half look broken.
+          */}
           <div className="border-border h-[65dvh] overflow-hidden rounded-xl border lg:h-[calc(100dvh-9rem)]">
             {token ? (
               <PropertyMapLoader
@@ -157,7 +163,12 @@ export function PropertyExplorer({ properties }: PropertyExplorerProps) {
                 resetToken={resetToken}
               />
             ) : (
-              <PropertyMapFallback reason="no-token" className="border-0" />
+              <CorridorMap
+                properties={filtered}
+                selectedId={selected?.id ?? null}
+                onSelect={handleSelect}
+                resetToken={resetToken}
+              />
             )}
           </div>
 
