@@ -6,9 +6,9 @@ import { SelectedProjects } from "@/components/home/selected-projects";
 import { SectionTransition } from "@/components/motion/section-transition";
 import { EnquirySection } from "@/components/sections/enquiry-section";
 import { ServiceAreasSection } from "@/components/sections/service-areas-section";
-import { getMapboxToken } from "@/lib/map/map-config";
 import { summarisePortfolio } from "@/lib/properties/portfolio-summary";
 import { getProperties } from "@/lib/properties/repository";
+import { getPublicSettings } from "@/lib/settings/public-settings";
 
 export const revalidate = 300;
 
@@ -36,12 +36,16 @@ export const revalidate = 300;
 export default async function HomePage() {
   const properties = await getProperties();
   const summary = summarisePortfolio(properties);
-  const token = getMapboxToken();
+  const settings = await getPublicSettings();
 
   return (
     <>
       {/* Opening: Map breathes, markers appear, three-way hover reactions */}
-      <MapStage properties={properties} summary={summary} token={token} />
+      <MapStage
+        properties={properties}
+        summary={summary}
+        companyName={settings.companyName}
+      />
 
       <DemonstrationNotice />
 
