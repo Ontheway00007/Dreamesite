@@ -61,6 +61,34 @@ export interface ProjectionOptions {
   readonly padding?: number;
   /** Width divided by height of the box being projected into. */
   readonly aspect?: number;
+  /**
+   * A geographic box to project against, as `[[minLon, minLat], [maxLon, maxLat]]`.
+   * Unioned with the extent of the points, so a point outside it still lands on
+   * the map and simply widens the frame.
+   *
+   * ## Why fitting to the data alone is wrong here
+   *
+   * Without this, the projection scales whatever it is given to fill the box. For
+   * a full portfolio that is right. For two homes it is badly wrong in two ways.
+   *
+   * It lies about distance: two homes a kilometre apart get pushed to opposite
+   * corners, because a kilometre is the entire extent of the data and the extent
+   * always fills the frame. A visitor reads that as two homes at opposite ends of
+   * the corridor.
+   *
+   * And it makes positions unstable: because the frame is derived from the
+   * current filter, changing a filter re-scales everything and every remaining
+   * marker jumps somewhere new. A home should not move when you tick a checkbox.
+   *
+   * Passing the corridor's own bounds fixes both. Positions become absolute
+   * within the corridor rather than relative to the filter, so a home in
+   * Donnybrook sits at the top of the frame whatever else is showing, and two
+   * homes in one suburb appear close together, which is the truth.
+   */
+  readonly bounds?: readonly [
+    readonly [number, number],
+    readonly [number, number],
+  ];
 }
 
 const DEFAULT_PADDING = 0.12;
@@ -105,10 +133,26 @@ export function projectGeoPoints(
   const eastings = points.map((point) => point.longitude);
   const northings = points.map((point) => mercatorNorthing(point.latitude));
 
-  const minEasting = Math.min(...eastings);
-  const maxEasting = Math.max(...eastings);
-  const minNorthing = Math.min(...northings);
-  const maxNorthing = Math.max(...northings);
+  /*
+    The frame is the union of the points and any fixed bounds. Unioning rather
+    than clamping means a point outside the given box is never dropped or pinned
+    to an edge: the frame simply widens to include it, so a home in a new suburb
+    appears in a sensible place before anybody remembers to update the bounds.
+  */
+  const frameEastings = [...eastings];
+  const frameNorthings = [...northings];
+
+  if (options.bounds) {
+    const [[west, south], [east, north]] = options.bounds;
+
+    frameEastings.push(west, east);
+    frameNorthings.push(mercatorNorthing(south), mercatorNorthing(north));
+  }
+
+  const minEasting = Math.min(...frameEastings);
+  const maxEasting = Math.max(...frameEastings);
+  const minNorthing = Math.min(...frameNorthings);
+  const maxNorthing = Math.max(...frameNorthings);
 
   const spanEasting = maxEasting - minEasting;
   const spanNorthing = maxNorthing - minNorthing;

@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HouseTypeGlyph } from "@/components/property/house-type-glyph";
 import { houseTypeTokens } from "@/lib/design/house-type";
 import { propertyStatusTokens } from "@/lib/design/property-status";
+import { suburbReferences } from "@/content/suburb-references";
+import { NORTHERN_CORRIDOR_BOUNDS } from "@/lib/map/map-config";
 import {
   projectGeoPoints,
   separateOverlapping,
@@ -176,93 +178,111 @@ export function CorridorMap({
   /* Privacy gate. The same one the Mapbox source uses. */
   const mappable = useMemo(() => properties.filter(isMappable), [properties]);
 
-  const placed = useMemo<readonly PlacedProperty[]>(() => {
-    if (size === null || mappable.length === 0) {
-      return [];
+  /*
+    One projection for the homes *and* the three suburb reference positions, so
+    both share a single transform and a marker can never drift away from the zone
+    it belongs to. Anchored to the corridor's own bounds, which makes positions
+    absolute within the corridor rather than relative to the current filter: a
+    home in Donnybrook sits at the top of the frame whatever else is showing, and
+    ticking a filter no longer teleports every remaining marker.
+  */
+  const projection = useMemo(() => {
+    if (size === null) {
+      return null;
     }
 
-    const projected = projectGeoPoints(
-      mappable.map((property) => ({
-        longitude: property.location.publicLongitude,
-        latitude: property.location.publicLatitude,
-      })),
-      { padding, aspect: size.width / size.height },
-    );
+    const homes = mappable.map((property) => ({
+      longitude: property.location.publicLongitude,
+      latitude: property.location.publicLatitude,
+    }));
 
-    /*
-      Into pixels, then fan out anything co-located.
+    const references = suburbReferences.map((reference) => ({
+      longitude: reference.longitude,
+      latitude: reference.latitude,
+    }));
 
-      The fan is not a nicety. A property whose location visibility is `suburb`
-      publishes its suburb's reference position rather than its own, so every
-      such home in Craigieburn resolves to one identical coordinate. Without this
-      they stack into a single marker and the map silently under-reports the
-      portfolio: three homes, one pin, no indication the other two exist.
+    const unit = projectGeoPoints([...homes, ...references], {
+      padding,
+      aspect: size.width / size.height,
+      bounds: NORTHERN_CORRIDOR_BOUNDS,
+    });
 
-      Mapbox solves this with clustering and a count bubble. Fanning is the better
-      answer here because the numbers are small and a visitor can then click each
-      home directly instead of zooming to break a cluster apart.
-    */
-    const pixels = projected.map((point) => ({
+    const pixels = unit.map((point) => ({
       x: point.x * size.width,
       y: point.y * size.height,
     }));
 
-    /* Computed once for the whole set, not per marker. */
-    const separated = separateOverlapping(pixels, MARKER_SEPARATION);
+    return {
+      homes: pixels.slice(0, homes.length),
+      references: pixels.slice(homes.length),
+    };
+  }, [mappable, size, padding]);
+
+  const placed = useMemo<readonly PlacedProperty[]>(() => {
+    if (projection === null || mappable.length === 0) {
+      return [];
+    }
+
+    /*
+      Fan out anything co-located. Not a nicety: a property whose location
+      visibility is `suburb` publishes its suburb's reference position rather than
+      its own, so every such home in one suburb arrives as an identical
+      coordinate. Drawn as-is they stack into a single marker and the map silently
+      under-reports the portfolio.
+    */
+    const separated = separateOverlapping(projection.homes, MARKER_SEPARATION);
 
     return mappable.map((property, index) => ({
       property,
       point: separated[index],
     }));
-  }, [mappable, size, padding]);
+  }, [mappable, projection]);
 
   /*
-    Zones are drawn around the suburb centroids rather than around every home,
-    and the radius grows with the number of homes so a suburb with more activity
-    reads as a larger presence on the corridor.
+    Zones come from the three known suburbs of the corridor, not from the homes,
+    so all three are always drawn and the map always reads as the whole corridor.
+    A suburb with no homes in the current filter is still part of the corridor, and
+    showing it as an empty zone is more informative than omitting it and leaving
+    the visitor to wonder whether it exists.
+
+    The radius grows with the number of homes so activity is legible at a glance,
+    and is capped: derived from the spread of the markers it ballooned to a
+    screen-filling arc as soon as two homes sat at opposite ends of the frame.
   */
   const zones = useMemo<readonly SuburbZone[]>(() => {
-    const groups = new Map<string, PlacedProperty[]>();
-
-    for (const entry of placed) {
-      const existing = groups.get(entry.property.suburb);
-
-      if (existing) {
-        existing.push(entry);
-      } else {
-        groups.set(entry.property.suburb, [entry]);
-      }
+    if (projection === null || size === null) {
+      return [];
     }
 
-    return [...groups.entries()]
-      .map(([name, entries]) => {
-        const centre = {
-          x: average(entries.map((entry) => entry.point.x)),
-          y: average(entries.map((entry) => entry.point.y)),
-        };
+    const counts = new Map<string, number>();
 
-        /*
-          Big enough to contain every home in the suburb plus a marker's radius,
-          with a floor so a single-home suburb still reads as a place.
-        */
-        const reach = Math.max(
-          ...entries.map((entry) => distance(entry.point, centre)),
-        );
+    for (const property of mappable) {
+      const key = property.suburb.trim().toLowerCase();
+
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+
+    const maxRadius = Math.min(size.width, size.height) * 0.17;
+
+    return suburbReferences
+      .map((reference, index) => {
+        const count = counts.get(reference.name.toLowerCase()) ?? 0;
 
         return {
-          name,
-          count: entries.length,
-          point: centre,
-          radius: Math.max(46, reach + MARKER_SEPARATION * 0.8),
+          name: reference.name,
+          count,
+          point: projection.references[index],
+          radius: Math.min(maxRadius, 38 + count * 11),
         };
       })
-      /* North to south, which is how the corridor reads on any other map. */
       .sort((a, b) => a.point.y - b.point.y);
-  }, [placed]);
+  }, [projection, size, mappable]);
 
   /*
-    The spine threads the suburb centroids, not every home. Threading every pin
-    produces a scribble; the suburbs are what the corridor actually is.
+    The spine threads the suburb references north to south. Because it is built
+    from the corridor rather than from the filter, it is always drawn and always
+    the same shape, which is what makes it read as a place instead of as a graph
+    of whatever happens to be selected.
   */
   const spinePath = useMemo(
     () => smoothPathThrough(zones.map((zone) => zone.point)),
@@ -287,7 +307,7 @@ export function CorridorMap({
   }, [onSelect]);
 
   const hasResults = placed.length > 0;
-  const isReady = size !== null;
+  const isReady = size !== null && projection !== null;
 
   return (
     <div
@@ -339,7 +359,11 @@ export function CorridorMap({
                 cx={zone.point.x}
                 cy={zone.point.y}
                 r={zone.radius}
-                className="fill-accent/6 stroke-accent/25"
+                className={
+                  zone.count > 0
+                    ? "fill-accent/8 stroke-accent/30"
+                    : "fill-accent/3 stroke-accent/12"
+                }
                 strokeWidth="1"
               />
               {/* An inner ring, so a zone reads as a surveyed area rather than a blob. */}
@@ -347,7 +371,7 @@ export function CorridorMap({
                 cx={zone.point.x}
                 cy={zone.point.y}
                 r={zone.radius * 0.62}
-                className="stroke-accent/12"
+                className={zone.count > 0 ? "stroke-accent/16" : "stroke-accent/8"}
                 strokeWidth="1"
                 strokeDasharray="3 5"
               />
@@ -407,7 +431,10 @@ export function CorridorMap({
         <p
           key={zone.name}
           aria-hidden="true"
-          className="corridor-zone-label text-foreground-subtle text-label tracking-label pointer-events-none absolute -translate-x-1/2 uppercase"
+          className={cn(
+            "corridor-zone-label text-label tracking-label pointer-events-none absolute -translate-x-1/2 uppercase",
+            zone.count > 0 ? "text-foreground-muted" : "text-foreground-subtle/60",
+          )}
           style={
             {
               left: zone.point.x,
@@ -635,16 +662,4 @@ function CorridorLegend() {
       </ul>
     </div>
   );
-}
-
-function average(values: readonly number[]): number {
-  if (values.length === 0) {
-    return 0;
-  }
-
-  return values.reduce((total, value) => total + value, 0) / values.length;
-}
-
-function distance(a: PixelPoint, b: PixelPoint): number {
-  return Math.hypot(a.x - b.x, a.y - b.y);
 }

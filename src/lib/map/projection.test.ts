@@ -421,3 +421,112 @@ function centroid(points: readonly { x: number; y: number }[]) {
     y: points.reduce((total, point) => total + point.y, 0) / points.length,
   };
 }
+
+
+describe("projectGeoPoints, fixed bounds", () => {
+  const corridor = [
+    [144.845, -37.64],
+    [145.005, -37.465],
+  ] as const;
+
+  it("keeps two nearby homes near each other instead of filling the frame", () => {
+    /*
+      The failure this option exists for. Fitting to the data alone scales
+      whatever it is given to fill the box, so two homes a kilometre apart get
+      pushed to opposite corners and the map claims they are at opposite ends of
+      the corridor.
+    */
+    const nearby = [
+      { longitude: 144.94, latitude: -37.6 },
+      { longitude: 144.948, latitude: -37.606 },
+    ];
+
+    const fitted = projectGeoPoints(nearby, { aspect: 1.6, padding: 0.12 });
+    const anchored = projectGeoPoints(nearby, {
+      aspect: 1.6,
+      padding: 0.12,
+      bounds: corridor,
+    });
+
+    const spread = (points: readonly { x: number; y: number }[]) =>
+      Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
+
+    // Fitting blows them apart across the whole frame.
+    expect(spread(fitted)).toBeGreaterThan(0.6);
+    // Anchoring keeps them where they belong, close together.
+    expect(spread(anchored)).toBeLessThan(0.1);
+  });
+
+  it("does not move a home when the filter changes", () => {
+    /*
+      Stability. A home's position must not depend on what else happens to be
+      selected, or ticking a filter teleports every remaining marker.
+    */
+    const donnybrook = { longitude: 144.95, latitude: -37.5 };
+    const options = { aspect: 1.6, padding: 0.12, bounds: corridor } as const;
+
+    const alone = projectGeoPoints([donnybrook], options);
+    const withOthers = projectGeoPoints(
+      [
+        donnybrook,
+        { longitude: 144.8833, latitude: -37.5167 },
+        { longitude: 144.94, latitude: -37.6 },
+      ],
+      options,
+    );
+
+    expect(withOthers[0].x).toBeCloseTo(alone[0].x, 10);
+    expect(withOthers[0].y).toBeCloseTo(alone[0].y, 10);
+  });
+
+  it("still places a home that falls outside the bounds, by widening the frame", () => {
+    /*
+      Unioning rather than clamping. A home in a suburb nobody has added to the
+      corridor bounds yet should land somewhere sensible, not be pinned to an edge
+      or dropped.
+    */
+    const outside = { longitude: 145.4, latitude: -37.2 };
+    const projected = projectGeoPoints(
+      [{ longitude: 144.94, latitude: -37.6 }, outside],
+      { aspect: 1.6, padding: 0.1, bounds: corridor },
+    );
+
+    for (const point of projected) {
+      expect(point.x).toBeGreaterThanOrEqual(0);
+      expect(point.x).toBeLessThanOrEqual(1);
+      expect(point.y).toBeGreaterThanOrEqual(0);
+      expect(point.y).toBeLessThanOrEqual(1);
+    }
+
+    // The far point is north and east of the other, and reads that way.
+    expect(projected[1].x).toBeGreaterThan(projected[0].x);
+    expect(projected[1].y).toBeLessThan(projected[0].y);
+  });
+
+  it("orders the three corridor suburbs north to south", () => {
+    const projected = projectGeoPoints(
+      suburbReferences.map((reference) => ({
+        longitude: reference.longitude,
+        latitude: reference.latitude,
+      })),
+      { aspect: 1.6, padding: 0.12, bounds: corridor },
+    );
+
+    const byName = new Map(
+      suburbReferences.map((reference, index) => [
+        reference.name,
+        projected[index],
+      ]),
+    );
+
+    const donnybrook = byName.get("Donnybrook");
+    const mickleham = byName.get("Mickleham");
+    const craigieburn = byName.get("Craigieburn");
+
+    expect(donnybrook && mickleham && craigieburn).toBeTruthy();
+    // Donnybrook -37.50 is north of Mickleham -37.5167, which is north of
+    // Craigieburn -37.60. Screen y grows downward.
+    expect(donnybrook!.y).toBeLessThan(mickleham!.y);
+    expect(mickleham!.y).toBeLessThan(craigieburn!.y);
+  });
+});
