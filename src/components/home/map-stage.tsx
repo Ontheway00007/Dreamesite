@@ -5,7 +5,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, List } from "lucide-react";
 
 import { CorridorMap } from "@/components/map/corridor-map";
-import { PropertyMapLoader } from "@/components/map/property-map-loader";
 import { StatusGlyph } from "@/components/map/status-glyph";
 import { Button } from "@/components/ui/button";
 import { propertyStatusTokens } from "@/lib/design/property-status";
@@ -19,8 +18,15 @@ import { MapPropertyPanel } from "@/components/home/map-property-panel";
 export interface MapStageProps {
   properties: readonly Property[];
   summary: PortfolioSummary;
-  /** Null when Mapbox is not configured; the stage then shows the fallback. */
-  token: string | null;
+  /**
+   * The business name, from site settings.
+   *
+   * This copy used to say "Dreame" in a string literal, which stopped being true
+   * the moment the settings row named the business something else. It is the only
+   * sentence on the homepage that introduces the company, and it was contradicting
+   * the wordmark directly above it.
+   */
+  companyName: string;
 }
 
 /**
@@ -49,7 +55,11 @@ export interface MapStageProps {
  * somewhere a sighted keyboard user cannot see. Selection changes are announced
  * politely, and the status rail is a group of real buttons with pressed state.
  */
-export function MapStage({ properties, summary, token }: MapStageProps) {
+export function MapStage({
+  properties,
+  summary,
+  companyName,
+}: MapStageProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<PropertyStatus | null>(null);
   const [resetToken, setResetToken] = useState(0);
@@ -117,52 +127,52 @@ export function MapStage({ properties, summary, token }: MapStageProps) {
       {/* ---------------------------------------------------------------- */}
       {/* The map itself, filling the stage.                               */}
       {/* ---------------------------------------------------------------- */}
-      <div className="absolute inset-0">
-        {token === null ? (
-          /*
-            The corridor map, not the "Map unavailable" card that used to render
-            here. This is the first viewport of the site, directly under an `h1`
-            that reads "Every home. Every stage. One map.", so an apology in this
-            slot undermined the sentence above it on every deployment without a
-            Mapbox token.
+      {/*
+        The corridor map, unconditionally, rather than Mapbox.
 
-            Extra padding because this stage overlays its own chrome on the map:
-            the heading occupies the top left and the status rail the bottom left,
-            where a marker at the extreme edge of the data would otherwise land.
-            `showLegend` stays off for the same reason it is off for Mapbox, and
-            `onHover` is wired so the heading's third line still swaps to the
-            hovered home. Keyboard focus reports hover too, so tabbing the map
-            drives that heading exactly as pointing does.
-          */
-          <CorridorMap
-            properties={visibleProperties}
-            selectedId={selected?.id ?? null}
-            onSelect={setSelectedId}
-            onHover={setHoveredPropertyId}
-            resetToken={resetToken}
-            showLegend={false}
-            padding={0.19}
-            className="h-full w-full"
-          />
-        ) : (
-          <PropertyMapLoader
-            properties={visibleProperties}
-            token={token}
-            /* The resolved selection, so the map never holds a filtered-out id. */
-            selectedId={selected?.id ?? null}
-            onSelect={setSelectedId}
-            onHover={setHoveredPropertyId}
-            resetToken={resetToken}
-            /*
-              The status rail already explains what each marker means, and the
-              built-in legend rendered underneath the brand block where it was
-              unreadable. Controls sit below the header and clear the status rail.
-            */
-            showLegend={false}
-            controlPosition="top-right"
-            className="h-full w-full"
-          />
-        )}
+        ## Why the homepage does not use the real map
+
+        This is the first viewport of the site and it exists to say one thing:
+        there is a portfolio, spread along one corridor, and every home in it is
+        at a knowable stage. Mapbox is the wrong instrument for that sentence.
+
+        Fitting a tile map to two or three published homes zooms it to street
+        level, so what actually renders is a grey grid of residential streets
+        under thirty street-name labels, with two faint pins somewhere in it. The
+        labels are the loudest thing on the page, none of them are ours, and the
+        corridor, the subject of the heading directly above, is invisible because
+        you are too far in to see it.
+
+        The corridor map answers the sentence instead. It draws the corridor as a
+        corridor: three suburb zones, a spine running north to south through
+        them, and a marker per home carrying its type and its stage. It reads at
+        two homes and it reads at fifty, it is on-brand rather than on-Mapbox, and
+        it costs no tile requests in the first viewport.
+
+        Mapbox still renders on `/properties`, which is the surface where street
+        context genuinely earns its noise: someone comparing two specific homes
+        wants to know what is around them. That is a different question from the
+        one this viewport asks.
+
+        Extra padding because this stage overlays its own chrome on the map: the
+        heading occupies the top left and the status rail the bottom left, where a
+        marker at the extreme edge of the data would otherwise land. `showLegend`
+        stays off for the same reason it was off for Mapbox, the status rail
+        already carries the key. `onHover` drives the heading's third line, and
+        keyboard focus reports hover too, so tabbing the map moves that heading
+        exactly as pointing does.
+      */}
+      <div className="absolute inset-0">
+        <CorridorMap
+          properties={visibleProperties}
+          selectedId={selected?.id ?? null}
+          onSelect={setSelectedId}
+          onHover={setHoveredPropertyId}
+          resetToken={resetToken}
+          showLegend={false}
+          padding={0.19}
+          className="h-full w-full"
+        />
       </div>
 
       {/*
@@ -236,8 +246,8 @@ export function MapStage({ properties, summary, token }: MapStageProps) {
             </span>
             <span className="hidden sm:inline">
               {hasProperties
-                ? "Dreame builds in Melbourne’s northern growth corridor. Every home we have on the ground is on this map, marked with the stage it is actually at."
-                : "Dreame builds in Melbourne’s northern growth corridor. Homes appear on this map as each one is published."}
+                ? `${companyName} builds in Melbourne’s northern growth corridor. Every home we have on the ground is on this map, marked with the stage it is actually at.`
+                : `${companyName} builds in Melbourne’s northern growth corridor. Homes appear on this map as each one is published.`}
             </span>
           </p>
 
