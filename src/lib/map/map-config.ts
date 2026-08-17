@@ -64,6 +64,17 @@ export const mapLayers = {
   markers: "dreame-property-markers",
   hovered: "dreame-property-hovered",
   selected: "dreame-property-selected",
+  /**
+   * A zero-radius layer that draws nothing.
+   *
+   * Mapbox only tiles a source that at least one visible layer consumes. The
+   * animated construction markers hide every layer that draws the source and then
+   * ask the source what it clustered, so without this the source would never be
+   * tiled and the query would always come back empty. A circle of radius zero is
+   * the cheapest way to say "keep this source live": nothing is rasterised, and
+   * it cannot be hit by a click because it has no area.
+   */
+  anchor: "dreame-property-anchor",
 } as const;
 
 export const clusterConfig = {

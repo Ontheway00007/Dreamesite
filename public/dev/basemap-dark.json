@@ -1,0 +1,43 @@
+{
+  "_comment": [
+    "LOCAL VERIFICATION BASEMAP — NOT FOR PRODUCTION.",
+    "",
+    "The production map uses mapbox://styles/mapbox/dark-v11, which needs a",
+    "Mapbox access token. This style exists so the construction-marker system",
+    "can be reviewed against a real dark basemap with real roads and locality",
+    "structure on a machine that has no token, by pointing",
+    "NEXT_PUBLIC_MAPBOX_STYLE at /dev/basemap-dark.json in .env.local.",
+    "",
+    "Nothing in the application references this file. Deleting it changes no",
+    "behaviour. Tiles are CARTO's free dark_matter raster basemap; the",
+    "attribution below is required by their terms and is rendered by Mapbox GL."
+  ],
+  "version": 8,
+  "name": "Dreame local verification (dark)",
+  "sources": {
+    "carto-dark": {
+      "type": "raster",
+      "tileSize": 256,
+      "maxzoom": 20,
+      "tiles": [
+        "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
+        "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
+        "https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png"
+      ],
+      "attribution": "&copy; <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors &copy; <a href=\"https://carto.com/attributions\">CARTO</a>"
+    }
+  },
+  "layers": [
+    {
+      "id": "background",
+      "type": "background",
+      "paint": { "background-color": "#0a0a0c" }
+    },
+    {
+      "id": "carto-dark",
+      "type": "raster",
+      "source": "carto-dark",
+      "paint": { "raster-opacity": 1, "raster-fade-duration": 0 }
+    }
+  ]
+}

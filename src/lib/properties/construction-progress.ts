@@ -5,7 +5,11 @@ import {
   STAGE_ORDER,
   defaultProgressForStatus,
 } from "@/lib/admin/validation/construction";
-import type { Property, PropertyConstructionUpdate } from "@/types";
+import type {
+  Property,
+  PropertyConstructionUpdate,
+  PropertyStatus,
+} from "@/types";
 
 /**
  * Build progress for a single home.
@@ -53,8 +57,18 @@ export interface ConstructionTimeline extends ConstructionProgress {
   readonly source: "recorded" | "process";
 }
 
-/** Statuses whose build work has finished. */
-const FINISHED_STATUSES = new Set(["move-in-ready", "completed", "sold"]);
+/**
+ * Statuses whose build work has finished.
+ *
+ * Exported because it is the one definition of "this home is built", and the map
+ * markers need the same answer the timeline gives. Two sets that disagree would
+ * show a finished house on the map beside a timeline that says otherwise.
+ */
+export const FINISHED_STATUSES: ReadonlySet<PropertyStatus> = new Set<PropertyStatus>([
+  "move-in-ready",
+  "completed",
+  "sold",
+]);
 
 function stateFor(index: number, currentIndex: number): MilestoneState {
   if (index < currentIndex) {

@@ -7,6 +7,7 @@ import type { GeoJSONSource, MapMouseEvent } from "mapbox-gl";
 
 import "mapbox-gl/dist/mapbox-gl.css";
 
+import { ConstructionMarkerLayer } from "@/components/map/construction-marker-layer";
 import { MapLegend } from "@/components/map/map-legend";
 import { PropertyMapFallback } from "@/components/map/property-map-fallback";
 import { propertyStatusOrder } from "@/lib/design/property-status";
@@ -34,6 +35,29 @@ import { isMappable } from "@/lib/properties/privacy";
 import { cn } from "@/lib/utils/cn";
 import { isSiteTheme } from "@/lib/theme";
 import type { Property } from "@/types";
+
+/**
+ * How long an errored map is given to load its style before the fallback
+ * replaces it. Long enough that a slow first style request is not mistaken for a
+ * broken one, short enough that a genuinely misconfigured token does not leave a
+ * visitor watching an empty rectangle.
+ */
+const unrecoverableGraceMs = 5000;
+
+/**
+ * The layers that draw the status marker system, including the emphasis and
+ * availability layers that only make sense underneath it. Hidden as a set when
+ * the construction miniatures take over.
+ */
+const statusMarkerLayers = [
+  mapLayers.clusters,
+  mapLayers.clusterCount,
+  mapLayers.activity,
+  mapLayers.activityCore,
+  mapLayers.markers,
+  mapLayers.hovered,
+  mapLayers.selected,
+] as const;
 
 /** Camera easing, skipped entirely for visitors who prefer reduced motion. */
 function cameraDuration(base: number): number {
@@ -67,6 +91,18 @@ export interface PropertyMapProps {
    * full-viewport map, so the homepage moves them to the bottom.
    */
   controlPosition?: "top-right" | "bottom-right";
+  /**
+   * Which marker system to draw.
+   *
+   * `status` is the existing one: a symbol layer of four dimensional silhouettes,
+   * one per lifecycle status.
+   *
+   * `construction` is the animated miniature maquettes, which build themselves up
+   * to each property's real construction stage. Opt-in while the prototype is
+   * being reviewed, so the homepage and the properties page are unaffected until
+   * the system is signed off. Promoting it is a change of this default.
+   */
+  markers?: "status" | "construction";
   className?: string;
 }
 
@@ -90,6 +126,7 @@ export default function PropertyMap({
   resetToken = 0,
   showLegend = true,
   controlPosition = "top-right",
+  markers = "status",
   className,
 }: PropertyMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -102,20 +139,29 @@ export default function PropertyMap({
     position is a mount-time decision.
   */
   const controlPositionRef = useRef(controlPosition);
+  const markersRef = useRef(markers);
+  const constructionLayerRef = useRef<ConstructionMarkerLayer | null>(null);
   const hoveredIdRef = useRef<string | null>(null);
   const fittedSignatureRef = useRef<string | null>(null);
+  /** Whether the map got far enough to be worth keeping. See `reportError`. */
+  const hasRenderedRef = useRef(false);
 
   const [isReady, setIsReady] = useState(false);
   const [hasError, setHasError] = useState(false);
 
   /**
-   * Records a failure. The state update is queued rather than applied inline so
-   * that a synchronous constructor throw does not update state from inside an
-   * effect body.
+   * Records a failure. Always reported; only sometimes fatal.
+   *
+   * The state update is queued rather than applied inline so that a synchronous
+   * constructor throw does not update state from inside an effect body.
    */
-  const reportError = useCallback((detail: unknown) => {
+  const reportError = useCallback((detail: unknown, fatal: boolean) => {
     if (process.env.NODE_ENV === "development") {
       console.error("[property-map]", detail);
+    }
+
+    if (!fatal) {
+      return;
     }
 
     queueMicrotask(() => setHasError(true));
@@ -133,7 +179,8 @@ export default function PropertyMap({
     selectRef.current = onSelect;
     hoverRef.current = onHover;
     geoJsonRef.current = geoJson;
-  }, [onSelect, onHover, geoJson]);
+    markersRef.current = markers;
+  }, [onSelect, onHover, geoJson, markers]);
 
   /** Frames the current results, or the corridor when nothing matches. */
   const fitToResults = useCallback(
@@ -179,6 +226,7 @@ export default function PropertyMap({
     let map: mapboxgl.Map;
     let markerEntranceFrame = 0;
     let markerEntranceTimer: ReturnType<typeof setTimeout> | null = null;
+    let fatalErrorTimer: ReturnType<typeof setTimeout> | null = null;
 
     const currentTheme = () => {
       const theme = document.documentElement.dataset.theme;
@@ -196,7 +244,8 @@ export default function PropertyMap({
         maxZoom: mapLimits.maxZoom,
       });
     } catch (error) {
-      reportError(error);
+      // The constructor throwing means there is no map at all: always fatal.
+      reportError(error, true);
       return;
     }
 
@@ -345,8 +394,39 @@ export default function PropertyMap({
         },
       });
 
+      /*
+        The status markers and their emphasis layers are hidden, not skipped,
+        when the construction miniatures are in charge. The clustered source and
+        its layers are what the miniatures read to decide what is a cluster and
+        what is a house, so the layers have to exist — they just must not draw a
+        second marker under every model.
+      */
+      if (markersRef.current === "construction") {
+        for (const layer of statusMarkerLayers) {
+          if (map.getLayer(layer)) {
+            map.setLayoutProperty(layer, "visibility", "none");
+          }
+        }
+
+        // See `mapLayers.anchor`: with every drawing layer hidden, this is what
+        // keeps the source tiled so the miniatures can read its clusters.
+        map.addLayer({
+          id: mapLayers.anchor,
+          type: "circle",
+          source: mapSource.properties,
+          paint: { "circle-radius": 0, "circle-opacity": 0 },
+        });
+      }
+
+      hasRenderedRef.current = true;
       setIsReady(true);
-      
+
+      if (markersRef.current === "construction") {
+        // The miniatures have their own entrance: each one builds itself out of
+        // an empty lot, which is a better arrival than a fade.
+        return;
+      }
+
       // The dimensional markers settle into the map rather than popping in.
       const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       if (!prefersReduced) {
@@ -389,8 +469,32 @@ export default function PropertyMap({
       }
     };
 
+    /**
+     * Mapbox emits `error` for plenty of things that do not stop the map
+     * working: one tile that 404s, a missing glyph range, a refused telemetry
+     * request. Replacing a working map with "the map could not load" because one
+     * request failed loses the whole map to fix nothing.
+     *
+     * The condition that actually matters is whether the style ever loads. When
+     * it does, the map is usable and later errors are reported but survivable.
+     * When it does not — an invalid token, no network — nothing recovers, so the
+     * fallback is shown after a short grace period rather than on the first
+     * error, because the first error may arrive before the style has had a
+     * chance to load at all.
+     */
     const onError = (event: { error?: { message?: string } }) => {
-      reportError(event.error?.message ?? "unknown map error");
+      const detail = event.error?.message ?? "unknown map error";
+      reportError(detail, false);
+
+      if (hasRenderedRef.current || fatalErrorTimer !== null) {
+        return;
+      }
+
+      fatalErrorTimer = setTimeout(() => {
+        if (!hasRenderedRef.current) {
+          reportError(`map never became usable: ${detail}`, true);
+        }
+      }, unrecoverableGraceMs);
     };
 
     map.on("style.load", onStyleLoad);
@@ -414,6 +518,9 @@ export default function PropertyMap({
       if (markerEntranceTimer) {
         clearTimeout(markerEntranceTimer);
       }
+      if (fatalErrorTimer) {
+        clearTimeout(fatalErrorTimer);
+      }
       cancelAnimationFrame(markerEntranceFrame);
       mapRef.current = null;
       fittedSignatureRef.current = null;
@@ -423,6 +530,89 @@ export default function PropertyMap({
       map.remove();
     };
   }, [token, reportError]);
+
+  /*
+    The animated construction miniatures.
+
+    Created after the style has loaded, because it needs the clustered source to
+    exist, and torn down whenever the style is replaced — a theme change re-runs
+    `style.load`, which means a new source, a new palette and therefore a new
+    sprite sheet.
+  */
+  useEffect(() => {
+    const map = mapRef.current;
+
+    if (!isReady || !map || markers !== "construction") {
+      return;
+    }
+
+    const layer = new ConstructionMarkerLayer({
+      map,
+      sourceId: mapSource.properties,
+      onSelect: (id) => selectRef.current(id),
+      onHover: (id) => hoverRef.current?.(id),
+      onClusterExpand: (clusterId, coordinates) => {
+        const source = map.getSource(mapSource.properties) as
+          | GeoJSONSource
+          | undefined;
+
+        source?.getClusterExpansionZoom(clusterId, (error, zoom) => {
+          if (error || zoom == null) {
+            return;
+          }
+
+          map.easeTo({
+            center: coordinates,
+            zoom,
+            duration: cameraDuration(600),
+          });
+        });
+      },
+    });
+
+    constructionLayerRef.current = layer;
+    let cancelled = false;
+
+    void layer.start().then((started) => {
+      if (cancelled) {
+        return;
+      }
+
+      if (!started) {
+        /*
+          No sprite sheet could be produced — no 2D canvas, most likely. Rather
+          than an empty map, the status markers that were hidden for this mode are
+          shown again. A visitor gets the previous marker system instead of none.
+        */
+        for (const statusLayer of statusMarkerLayers) {
+          if (map.getLayer(statusLayer)) {
+            map.setLayoutProperty(statusLayer, "visibility", "visible");
+          }
+        }
+        return;
+      }
+
+      layer.setProperties(properties);
+      layer.setSelected(selectedId);
+    });
+
+    return () => {
+      cancelled = true;
+      constructionLayerRef.current = null;
+      layer.destroy();
+    };
+    // `properties` and `selectedId` are pushed in by the effects below rather
+    // than rebuilding the layer, which would restart every animation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReady, markers]);
+
+  useEffect(() => {
+    constructionLayerRef.current?.setProperties(properties);
+  }, [properties]);
+
+  useEffect(() => {
+    constructionLayerRef.current?.setSelected(selectedId);
+  }, [selectedId]);
 
   // Interaction handlers, attached once the layers exist.
   useEffect(() => {
@@ -629,6 +819,15 @@ export default function PropertyMap({
     if (
       !isReady ||
       !map ||
+      /*
+        The construction miniatures carry their own availability cue, in CSS, on
+        the marker that has finished building. Leaving this running as well would
+        mutate paint properties on hidden layers sixty times a second — which
+        still forces Mapbox to redraw the whole map on every frame, for nothing
+        anybody can see. That was measurable: a map that should be idle was
+        repainting continuously.
+      */
+      markers === "construction" ||
       !map.getLayer(mapLayers.activity) ||
       !map.getLayer(mapLayers.activityCore)
     ) {
@@ -689,7 +888,7 @@ export default function PropertyMap({
     return () => {
       window.cancelAnimationFrame(animationFrame);
     };
-  }, [isReady, selectedId]);
+  }, [isReady, selectedId, markers]);
 
   return (
     <div className={cn("relative isolate h-full w-full", className)}>

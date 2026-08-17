@@ -35,7 +35,12 @@ export default function robots(): MetadataRoute.Robots {
         allow: "/",
         // `/api/` is listed although none is public yet: adding a route later
         // should not silently make it crawlable.
-        disallow: ["/admin", "/admin/", "/api/"],
+        //
+        // `/lab/` holds prototype surfaces used to review a feature before it
+        // ships. They send `noindex` themselves, but they also carry synthetic
+        // property data, and a crawler that fetches one before reading the tag
+        // has already seen it.
+        disallow: ["/admin", "/admin/", "/api/", "/lab/"],
       },
     ],
     sitemap: `${env.siteUrl}/sitemap.xml`,

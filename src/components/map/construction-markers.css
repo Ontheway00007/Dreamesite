@@ -1,0 +1,333 @@
+/* ==========================================================================
+   Animated construction markers
+   The DOM half of the miniature maquette system. Everything here is either a
+   compositor-only property (transform, opacity, filter) or a single
+   background-position write, so a map full of building houses costs the main
+   thread almost nothing.
+
+   Plain CSS rather than Tailwind utilities because these elements are created
+   imperatively by Mapbox, not rendered by React, so there is no class list to
+   compose at the call site.
+   ========================================================================== */
+
+.dreame-maquette {
+  /* Set on the map container and inherited, so one write rescales every marker
+     when the camera zooms. */
+  --maquette-scale: 1;
+  /* Local emphasis, multiplied into the same transform. */
+  --maquette-emphasis: 1;
+  --maquette-size: 54px;
+  --maquette-progress: 0;
+
+  position: relative;
+  display: grid;
+  place-items: center;
+  /* A 44px hit area regardless of how small the miniature is drawn. The model
+     scales inside this box; the target does not shrink with it. */
+  width: max(44px, calc(var(--maquette-size) * var(--maquette-scale)));
+  height: max(44px, calc(var(--maquette-size) * var(--maquette-scale)));
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  opacity: 1;
+  transition: opacity var(--duration-base, 320ms) var(--ease-luxe, ease);
+}
+
+.dreame-maquette:focus-visible {
+  outline: none;
+}
+
+/* The miniature itself: one cell of the sprite sheet.
+
+   `background-size` is expressed as a multiple of the element rather than in
+   pixels, and `background-position` in percentages, so zoom scaling is a pure
+   transform and never has to recompute the sheet offsets. */
+.dreame-maquette__sprite {
+  position: absolute;
+  width: var(--maquette-size);
+  height: var(--maquette-size);
+  background-repeat: no-repeat;
+  background-size: var(--maquette-sheet-size);
+  /* The lot sits below the middle of the cell, so the model grows up out of the
+     ground rather than away from its own centre. */
+  transform-origin: 50% 62%;
+  transform: scale(calc(var(--maquette-scale) * var(--maquette-emphasis)));
+  transition:
+    transform var(--duration-base, 320ms) var(--ease-luxe, ease),
+    opacity var(--duration-fast, 180ms) linear,
+    filter var(--duration-base, 320ms) var(--ease-luxe, ease);
+  will-change: transform;
+}
+
+/* The dissolve at the end of a cycle. Deliberately not a rewind: a house that
+   un-builds itself reads as demolition. */
+.dreame-maquette[data-loop="resetting"] .dreame-maquette__sprite {
+  opacity: 0.12;
+  transform: scale(calc(var(--maquette-scale) * var(--maquette-emphasis) * 0.96));
+}
+
+/* --- Status cues ---------------------------------------------------------
+   The model stays neutral architectural material in every state. Status is
+   carried by what sits behind and beneath it, never by painting the house. */
+
+.dreame-maquette__halo {
+  position: absolute;
+  width: calc(var(--maquette-size) * 0.92);
+  height: calc(var(--maquette-size) * 0.52);
+  /* Centred on the lot rather than the cell. */
+  transform: translateY(calc(var(--maquette-size) * 0.14))
+    scale(calc(var(--maquette-scale) * var(--maquette-emphasis)));
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity var(--duration-slow, 640ms) var(--ease-luxe, ease),
+    transform var(--duration-base, 320ms) var(--ease-luxe, ease);
+}
+
+/* Availability, and only once the home has finished building itself. A glow
+   that runs during construction would be claiming the house is ready while it
+   is visibly a frame. */
+.dreame-maquette[data-status="move-in-ready"][data-loop="holding"]
+  .dreame-maquette__halo,
+.dreame-maquette[data-status="move-in-ready"][data-static="true"]
+  .dreame-maquette__halo {
+  opacity: 1;
+  background: radial-gradient(
+    ellipse at center,
+    color-mix(in oklab, var(--status-move-in-ready) 42%, transparent) 0%,
+    color-mix(in oklab, var(--status-move-in-ready) 14%, transparent) 45%,
+    transparent 72%
+  );
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .dreame-maquette[data-status="move-in-ready"][data-loop="holding"]
+    .dreame-maquette__halo {
+    animation: maquette-available 4.6s var(--ease-luxe, ease) infinite;
+  }
+}
+
+@keyframes maquette-available {
+  0%,
+  100% {
+    opacity: 0.62;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Under construction: a terracotta arc beneath the model showing how far
+   through the build the property actually is. An arc, not a pulse — it carries
+   information rather than attracting attention. */
+.dreame-maquette__ring {
+  position: absolute;
+  width: calc(var(--maquette-size) * 0.56);
+  height: calc(var(--maquette-size) * 0.56);
+  transform: translateY(calc(var(--maquette-size) * 0.15))
+    rotateX(62deg)
+    scale(calc(var(--maquette-scale) * var(--maquette-emphasis)));
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--duration-base, 320ms) var(--ease-luxe, ease);
+  background: conic-gradient(
+    from 0deg,
+    var(--maquette-accent, #b85c32) 0turn,
+    var(--maquette-accent, #b85c32) calc(var(--maquette-progress) * 1turn),
+    transparent calc(var(--maquette-progress) * 1turn),
+    transparent 1turn
+  );
+  /* Hollowed to a ring so it reads as a set-out line on the ground. */
+  mask: radial-gradient(circle, transparent 60%, black 62%);
+  -webkit-mask: radial-gradient(circle, transparent 60%, black 62%);
+}
+
+.dreame-maquette[data-status="under-construction"] .dreame-maquette__ring {
+  opacity: 0.85;
+}
+
+/* Sold: the model settles into a quieter material. Desaturated rather than
+   recoloured, so it is still recognisably the same miniature. */
+.dreame-maquette[data-status="sold"] .dreame-maquette__sprite {
+  filter: saturate(0.62) brightness(0.9);
+}
+
+/* Completed: nothing but a slightly firmer shadow, which the sprite already
+   carries. Neutral is the point. */
+
+/* --- Interaction --------------------------------------------------------- */
+
+.dreame-maquette[data-state="active"],
+.dreame-maquette[data-state="selected"] {
+  --maquette-emphasis: 1.28;
+  z-index: 3;
+}
+
+.dreame-maquette[data-state="active"] .dreame-maquette__sprite,
+.dreame-maquette[data-state="selected"] .dreame-maquette__sprite {
+  /* Local contrast, not a colour change: the miniature is lifted out of the
+     basemap by light and shadow. */
+  filter: drop-shadow(0 6px 12px rgb(0 0 0 / 0.55)) contrast(1.08)
+    brightness(1.06);
+}
+
+.dreame-maquette[data-status="sold"][data-state="active"]
+  .dreame-maquette__sprite,
+.dreame-maquette[data-status="sold"][data-state="selected"]
+  .dreame-maquette__sprite {
+  filter: saturate(0.72) drop-shadow(0 6px 12px rgb(0 0 0 / 0.55)) contrast(1.06);
+}
+
+.dreame-maquette:focus-visible .dreame-maquette__sprite {
+  filter: drop-shadow(0 0 0 2px var(--ring, #c2935b))
+    drop-shadow(0 6px 12px rgb(0 0 0 / 0.5)) contrast(1.08);
+}
+
+.dreame-maquette__focus {
+  position: absolute;
+  width: calc(var(--maquette-size) * 0.7);
+  height: calc(var(--maquette-size) * 0.7);
+  border-radius: 999px;
+  opacity: 0;
+  pointer-events: none;
+  outline: 2px solid var(--ring, #c2935b);
+  outline-offset: 2px;
+}
+
+.dreame-maquette:focus-visible .dreame-maquette__focus {
+  opacity: 1;
+}
+
+/* While one marker is being inspected, the rest step back. Enough that focus is
+   obvious, not enough that the map loses its other properties. */
+.mapboxgl-map[data-maquette-focus="true"]
+  .dreame-maquette:not([data-state="active"]):not([data-state="selected"]) {
+  opacity: 0.48;
+}
+
+/* ==========================================================================
+   Clusters
+   Overlapping houses are never drawn as a pile of miniatures. One plinth, one
+   count, and zooming in resolves it into individual buildings.
+   ========================================================================== */
+
+.dreame-cluster {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: max(48px, calc(52px * var(--maquette-scale, 1)));
+  height: max(48px, calc(52px * var(--maquette-scale, 1)));
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform var(--duration-base, 320ms) var(--ease-luxe, ease);
+}
+
+.dreame-cluster:hover,
+.dreame-cluster:focus-visible {
+  transform: scale(1.08);
+  outline: none;
+}
+
+/* An axonometric plinth, to belong to the miniatures rather than to the
+   generic vocabulary of map bubbles. */
+.dreame-cluster__plinth {
+  position: absolute;
+  width: 62%;
+  height: 62%;
+  transform: rotate(45deg) skew(-14deg, -14deg) translateY(14%);
+  background: linear-gradient(
+    160deg,
+    var(--maquette-slab, #ded4c3) 0%,
+    color-mix(in oklab, var(--maquette-slab, #ded4c3) 72%, black) 100%
+  );
+  border: 1px solid color-mix(in oklab, var(--maquette-roof, #201f1b) 42%, transparent);
+  box-shadow: 0 8px 18px -8px rgb(0 0 0 / 0.7);
+  pointer-events: none;
+}
+
+.dreame-cluster__stack {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Three small massed blocks on the plinth: a neighbourhood, not a number in a
+   circle. */
+.dreame-cluster__stack::before,
+.dreame-cluster__stack::after {
+  content: "";
+  position: absolute;
+  background: var(--maquette-body, #f1ebdd);
+  border-top: 2px solid var(--maquette-roof, #201f1b);
+}
+
+.dreame-cluster__stack::before {
+  width: 22%;
+  height: 20%;
+  left: 26%;
+  top: 30%;
+  transform: skewY(-14deg);
+}
+
+.dreame-cluster__stack::after {
+  width: 18%;
+  height: 26%;
+  left: 52%;
+  top: 26%;
+  transform: skewY(14deg);
+}
+
+.dreame-cluster__count {
+  position: relative;
+  z-index: 2;
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--maquette-roof, #201f1b);
+  text-shadow: 0 1px 0 color-mix(in oklab, var(--maquette-body, #f1ebdd) 70%, transparent);
+  pointer-events: none;
+  transform: translateY(24%);
+}
+
+.dreame-cluster__label {
+  position: absolute;
+  bottom: -0.15rem;
+  z-index: 2;
+  font-size: 0.5rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  line-height: 1;
+  color: var(--foreground-muted, #cabca7);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   Reduced motion
+   The construction loop does not run. Each marker is rendered directly at the
+   property's real stage and stays there. Nothing is hidden and nothing becomes
+   unavailable — only the movement is gone.
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .dreame-maquette__sprite,
+  .dreame-maquette__halo,
+  .dreame-maquette__ring,
+  .dreame-cluster {
+    transition-duration: 1ms;
+  }
+
+  .dreame-maquette[data-loop="resetting"] .dreame-maquette__sprite {
+    opacity: 1;
+    transform: scale(calc(var(--maquette-scale) * var(--maquette-emphasis)));
+  }
+}

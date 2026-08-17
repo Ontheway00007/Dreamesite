@@ -31,6 +31,23 @@
   --palette-amber: #d7a44f;
   --palette-pearl: #c4ccd0;
 
+  /* --- Warm editorial palette -------------------------------------------
+     The architectural register: warm ivory surfaces, deep espresso type and a
+     restrained terracotta accent. Introduced for the miniature construction
+     maquettes on the map, which are built from real material colours rather
+     than interface colours, and shared with the editorial surfaces that follow
+     the map.
+
+     These stay literal values on purpose. `getComputedStyle` resolves a
+     `color-mix()` token to `oklab(...)`, which the canvas colour reader cannot
+     parse, so anything a canvas has to read has to be written out. */
+  --palette-ivory: #f1ebdd;
+  --palette-paper: #f8f6ef;
+  --palette-stone-warm: #ded4c3;
+  --palette-taupe-warm: #b5a78f;
+  --palette-espresso: #201f1b;
+  --palette-terracotta: #b85c32;
+
   /* --- Semantic surfaces ------------------------------------------------ */
   --background: var(--palette-black);
   --background-alt: var(--palette-obsidian);
@@ -58,6 +75,20 @@
   --status-under-construction: var(--palette-amber);
   --status-completed: var(--palette-pearl);
   --status-sold: var(--palette-clay);
+
+  /* --- Miniature construction maquettes -------------------------------
+     Material colours for the animated map markers. Read by a canvas, so every
+     one of these must resolve to a literal colour. */
+  --maquette-body: var(--palette-ivory);
+  --maquette-roof: var(--palette-espresso);
+  --maquette-slab: var(--palette-stone-warm);
+  --maquette-timber: var(--palette-taupe-warm);
+  --maquette-accent: var(--palette-terracotta);
+  --maquette-glass: #10161a;
+  /* The lot the miniature stands on. Tuned per theme so the model separates
+     from the basemap rather than dissolving into it. */
+  --maquette-lot: #33322f;
+  --maquette-lot-edge: #8c8478;
 
   /* --- Focus ring ------------------------------------------------------- */
   --ring: color-mix(in oklab, var(--palette-brass) 65%, transparent);
@@ -113,6 +144,13 @@ html[data-theme="light"] {
   --status-sold: #9d5145;
 
   --ring: color-mix(in oklab, #9c6737 72%, transparent);
+
+  /* The maquette is a physical object, so its materials do not change with the
+     interface theme. Only the lot it stands on does, because it has to separate
+     from a light basemap instead of a dark one. */
+  --maquette-glass: #33403f;
+  --maquette-lot: #cdc3b2;
+  --maquette-lot-edge: #6d6355;
 
   --shadow-soft: 0 1px 2px rgb(43 34 24 / 0.09), 0 12px 32px -18px rgb(43 34 24 / 0.2);
   --shadow-raised: 0 2px 5px rgb(43 34 24 / 0.1), 0 26px 70px -30px rgb(43 34 24 / 0.28);
@@ -501,6 +539,61 @@ html[data-theme="light"] {
     );
     background-size: 3px 3px;
   }
+}
+
+/* ==========================================================================
+   Editorial register
+   The warm architectural voice: ivory paper, espresso type, a restrained clay
+   accent. Used where the interface steps out of the cinematic dark map and into
+   the printed-monograph feeling of the rest of the site.
+
+   Implemented as a local override of the semantic tokens rather than as a set of
+   new utility classes. Every component already reads `--foreground`,
+   `--border`, `--surface` and the status colours, so anything placed inside an
+   `.editorial-surface` adopts the register with no second implementation and no
+   props threaded through it. It also means the register survives a theme change
+   untouched, which is the point: ivory paper is a material, not a theme.
+   ========================================================================== */
+
+.editorial-surface {
+  color-scheme: light;
+
+  --background: var(--palette-paper);
+  --background-alt: var(--palette-ivory);
+  --surface: var(--palette-paper);
+  --surface-raised: #fffdf8;
+  --surface-overlay: color-mix(in oklab, var(--palette-paper) 88%, transparent);
+
+  --border: color-mix(in oklab, var(--palette-espresso) 13%, transparent);
+  --border-strong: color-mix(in oklab, var(--palette-espresso) 26%, transparent);
+
+  --foreground: var(--palette-espresso);
+  --foreground-muted: #58524a;
+  --foreground-subtle: #8b8172;
+  --foreground-inverse: var(--palette-paper);
+
+  --accent: var(--palette-terracotta);
+  --accent-strong: #9a4a25;
+  --accent-foreground: var(--palette-paper);
+  --accent-soft: color-mix(in oklab, var(--palette-terracotta) 14%, transparent);
+
+  /* Re-tuned for legibility on cream. The same four meanings, not new ones. */
+  --status-move-in-ready: #5c7856;
+  --status-under-construction: #a2611c;
+  --status-completed: #4f5a5e;
+  --status-sold: #92564a;
+
+  --ring: color-mix(in oklab, var(--palette-terracotta) 62%, transparent);
+
+  --shadow-soft: 0 1px 2px rgb(32 31 27 / 0.07), 0 12px 30px -16px rgb(32 31 27 / 0.18);
+  --shadow-raised:
+    0 1px 2px rgb(32 31 27 / 0.08), 0 30px 70px -28px rgb(32 31 27 / 0.42);
+
+  --grain-color: var(--palette-espresso);
+  --blueprint-line: color-mix(in oklab, var(--palette-espresso) 8%, transparent);
+
+  background-color: var(--background);
+  color: var(--foreground);
 }
 
 .theme-toggle__sun,
