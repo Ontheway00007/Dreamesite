@@ -94,13 +94,14 @@ export interface PropertyMapProps {
   /**
    * Which marker system to draw.
    *
-   * `status` is the existing one: a symbol layer of four dimensional silhouettes,
-   * one per lifecycle status.
+   * `construction`, the default, is the animated miniature maquettes: each home
+   * builds itself out of an empty lot up to its real construction stage, holds
+   * there, resets and repeats.
    *
-   * `construction` is the animated miniature maquettes, which build themselves up
-   * to each property's real construction stage. Opt-in while the prototype is
-   * being reviewed, so the homepage and the properties page are unaffected until
-   * the system is signed off. Promoting it is a change of this default.
+   * `status` is the earlier system, kept as a fallback rather than deleted: a
+   * symbol layer of four dimensional silhouettes, one per lifecycle status. It is
+   * what the map falls back to if no sprite sheet can be produced, and it is
+   * still the right choice for any surface that wants a static key.
    */
   markers?: "status" | "construction";
   className?: string;
@@ -126,7 +127,7 @@ export default function PropertyMap({
   resetToken = 0,
   showLegend = true,
   controlPosition = "top-right",
-  markers = "status",
+  markers = "construction",
   className,
 }: PropertyMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -908,7 +909,7 @@ export default function PropertyMap({
       />
 
       {showLegend && isReady && !hasError ? (
-        <MapLegend className="absolute top-4 left-4 z-10" />
+        <MapLegend variant={markers} className="absolute top-4 left-4 z-10" />
       ) : null}
 
       {!isReady && !hasError ? (

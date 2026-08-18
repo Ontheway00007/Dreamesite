@@ -217,98 +217,77 @@
    ========================================================================== */
 
 .dreame-cluster {
+  --maquette-size: 58px;
+
   position: relative;
   display: grid;
   place-items: center;
-  width: max(48px, calc(52px * var(--maquette-scale, 1)));
-  height: max(48px, calc(52px * var(--maquette-scale, 1)));
+  width: max(48px, calc(var(--maquette-size) * var(--maquette-scale, 1)));
+  height: max(48px, calc(var(--maquette-size) * var(--maquette-scale, 1)));
   padding: 0;
   border: 0;
   background: none;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-  transition: transform var(--duration-base, 320ms) var(--ease-luxe, ease);
 }
 
-.dreame-cluster:hover,
-.dreame-cluster:focus-visible {
-  transform: scale(1.08);
-  outline: none;
-}
-
-/* An axonometric plinth, to belong to the miniatures rather than to the
-   generic vocabulary of map bubbles. */
+/* The neighbourhood, out of the same sprite sheet as the individual
+   miniatures — same materials, same light, same axonometric. */
 .dreame-cluster__plinth {
   position: absolute;
-  width: 62%;
-  height: 62%;
-  transform: rotate(45deg) skew(-14deg, -14deg) translateY(14%);
-  background: linear-gradient(
-    160deg,
-    var(--maquette-slab, #ded4c3) 0%,
-    color-mix(in oklab, var(--maquette-slab, #ded4c3) 72%, black) 100%
-  );
-  border: 1px solid color-mix(in oklab, var(--maquette-roof, #201f1b) 42%, transparent);
-  box-shadow: 0 8px 18px -8px rgb(0 0 0 / 0.7);
+  width: var(--maquette-size);
+  height: var(--maquette-size);
+  background-repeat: no-repeat;
+  background-size: var(--maquette-sheet-size);
+  transform-origin: 50% 62%;
+  transform: scale(var(--maquette-scale, 1));
+  transition: transform var(--duration-base, 320ms) var(--ease-luxe, ease);
   pointer-events: none;
 }
 
-.dreame-cluster__stack {
+.dreame-cluster:hover .dreame-cluster__plinth,
+.dreame-cluster:focus-visible .dreame-cluster__plinth {
+  transform: scale(calc(var(--maquette-scale, 1) * 1.12));
+}
+
+.dreame-cluster:focus-visible {
+  outline: 2px solid var(--ring, #c2935b);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* The count is a caption under the plinth, not a number over the buildings.
+   Printed on top of the massing it collided with the roofs and became
+   unreadable at every size. */
+.dreame-cluster__caption {
   position: absolute;
-  inset: 0;
+  top: calc(50% + var(--maquette-size) * 0.30 * var(--maquette-scale, 1));
+  z-index: 2;
+  display: flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid color-mix(in oklab, var(--palette-taupe-warm, #b5a78f) 34%, transparent);
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--palette-espresso, #201f1b) 82%, transparent);
+  backdrop-filter: blur(6px);
+  line-height: 1;
+  white-space: nowrap;
   pointer-events: none;
-}
-
-/* Three small massed blocks on the plinth: a neighbourhood, not a number in a
-   circle. */
-.dreame-cluster__stack::before,
-.dreame-cluster__stack::after {
-  content: "";
-  position: absolute;
-  background: var(--maquette-body, #f1ebdd);
-  border-top: 2px solid var(--maquette-roof, #201f1b);
-}
-
-.dreame-cluster__stack::before {
-  width: 22%;
-  height: 20%;
-  left: 26%;
-  top: 30%;
-  transform: skewY(-14deg);
-}
-
-.dreame-cluster__stack::after {
-  width: 18%;
-  height: 26%;
-  left: 52%;
-  top: 26%;
-  transform: skewY(14deg);
 }
 
 .dreame-cluster__count {
-  position: relative;
-  z-index: 2;
   font-size: 0.75rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  line-height: 1;
-  color: var(--maquette-roof, #201f1b);
-  text-shadow: 0 1px 0 color-mix(in oklab, var(--maquette-body, #f1ebdd) 70%, transparent);
-  pointer-events: none;
-  transform: translateY(24%);
+  color: var(--palette-paper, #f8f6ef);
 }
 
 .dreame-cluster__label {
-  position: absolute;
-  bottom: -0.15rem;
-  z-index: 2;
   font-size: 0.5rem;
   font-weight: 500;
-  letter-spacing: 0.16em;
-  line-height: 1;
-  color: var(--foreground-muted, #cabca7);
-  pointer-events: none;
-  white-space: nowrap;
+  letter-spacing: 0.14em;
+  color: var(--palette-taupe-warm, #b5a78f);
 }
 
 /* ==========================================================================
@@ -322,7 +301,7 @@
   .dreame-maquette__sprite,
   .dreame-maquette__halo,
   .dreame-maquette__ring,
-  .dreame-cluster {
+  .dreame-cluster__plinth {
     transition-duration: 1ms;
   }
 
@@ -330,4 +309,66 @@
     opacity: 1;
     transform: scale(calc(var(--maquette-scale) * var(--maquette-emphasis)));
   }
+}
+
+
+/* ==========================================================================
+   Legend swatches
+   The cue each status draws around its building, at legend size. Built from the
+   same custom properties as the markers so the key cannot describe something
+   the map is not doing.
+   ========================================================================== */
+
+.dreame-legend-cue {
+  position: relative;
+  flex: none;
+  display: block;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+}
+
+/* Move-in ready: the soft halo the finished model sits in. */
+.dreame-legend-cue[data-status="move-in-ready"] {
+  background: radial-gradient(
+    circle,
+    color-mix(in oklab, var(--status-move-in-ready) 55%, transparent) 0%,
+    color-mix(in oklab, var(--status-move-in-ready) 18%, transparent) 48%,
+    transparent 74%
+  );
+}
+
+.dreame-legend-cue[data-status="move-in-ready"]::after {
+  content: "";
+  position: absolute;
+  inset: 34%;
+  border-radius: 50%;
+  background: var(--maquette-body, #f1ebdd);
+}
+
+/* Under construction: the terracotta progress arc, shown part-complete. */
+.dreame-legend-cue[data-status="under-construction"] {
+  background: conic-gradient(
+    from 0deg,
+    var(--maquette-accent, #b85c32) 0turn,
+    var(--maquette-accent, #b85c32) 0.6turn,
+    transparent 0.6turn,
+    transparent 1turn
+  );
+  mask: radial-gradient(circle, transparent 52%, black 56%);
+  -webkit-mask: radial-gradient(circle, transparent 52%, black 56%);
+}
+
+/* Completed: neutral. Nothing but the model and its shadow. */
+.dreame-legend-cue[data-status="completed"] {
+  background: var(--maquette-body, #f1ebdd);
+  box-shadow: 0 2px 4px -1px rgb(0 0 0 / 0.5);
+  transform: scale(0.62);
+}
+
+/* Sold: the same model, muted. */
+.dreame-legend-cue[data-status="sold"] {
+  background: color-mix(in oklab, var(--maquette-body, #f1ebdd) 52%, var(--status-sold));
+  transform: scale(0.62);
+  opacity: 0.75;
 }

@@ -3,10 +3,23 @@
 Every home on the map builds itself out of an empty lot, up to the stage its own
 data says it has reached, holds there, resets and repeats.
 
-Currently **opt-in**. `/lab/construction-markers` is the only route that passes
-`markers="construction"` to `PropertyMap`; the homepage and `/properties` still
-draw the status marker system. Promoting it is a one-line change to the
-`markers` default in `src/components/map/property-map.tsx`.
+**On by default** across the public map — the homepage and `/properties`. The
+earlier status marker system is kept rather than deleted, as
+`markers="status"`: it is what the map falls back to if no sprite sheet can be
+produced, and it is still the right choice for a surface that wants a static key.
+
+`/lab/construction-markers` remains as the review surface — three properties with
+known construction data, a frame-by-frame contact sheet, and a runtime-cost panel
+that measures its own frame rate.
+
+## Known gap
+
+At the corridor view, which is where a visitor arrives, the basemap is very dark
+and the homepage lays gradients over it. The miniatures are legible but they are
+working against the background rather than with it. Making the geography more
+visible — roads, locality structure, the estate grids — is what this feature is
+still waiting on, and it is a change to the map style and the homepage overlays
+rather than to the markers.
 
 ## The one stage mapping
 
@@ -116,8 +129,14 @@ there. Everything remains interactive.
 ## Clusters
 
 Overlapping homes are one architectural plinth with a count, never a pile of
-miniatures. Clustering itself is unchanged — the miniatures ask the existing
-clustered source what it grouped, via `querySourceFeatures`.
+miniatures. The neighbourhood is drawn into the same sprite sheet as the
+buildings, on its own row, in three densities — so a cluster is lit and coloured
+like the miniatures it stands in for. Its count is a caption *under* the plinth,
+not a number over the roofs, where it collided with the massing and was
+unreadable at every size.
+
+Clustering itself is unchanged — the miniatures ask the existing clustered source
+what it grouped, via `querySourceFeatures`.
 
 `mapLayers.anchor` exists because of this: Mapbox only tiles a source that a
 visible layer consumes, and this mode hides every layer that draws it. A

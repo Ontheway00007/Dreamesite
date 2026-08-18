@@ -76,6 +76,8 @@ export interface MaquetteAtlas {
   /** How long drawing all the frames took, for reporting. */
   readonly renderMs: number;
   readonly rowForArchetype: Readonly<Record<ArchitecturalVariant, number>>;
+  /** The row carrying the cluster neighbourhoods. */
+  readonly clusterRow: number;
   readonly dispose: () => void;
 }
 
@@ -492,7 +494,9 @@ export async function getMaquetteAtlas(): Promise<MaquetteAtlas | null> {
   }
 
   const columns = FRAME_COUNT;
-  const rows = ARCHETYPE_ORDER.length;
+  // One row per archetype, plus a final row of cluster neighbourhoods.
+  const rows = ARCHETYPE_ORDER.length + 1;
+  const clusterRow = ARCHETYPE_ORDER.length;
   const cellPixels = CELL * PIXEL_RATIO;
 
   const canvas = document.createElement("canvas");
@@ -527,6 +531,16 @@ export async function getMaquetteAtlas(): Promise<MaquetteAtlas | null> {
     });
   });
 
+  for (let density = 0; density < 3; density += 1) {
+    context.save();
+    context.translate(density * cellPixels, clusterRow * cellPixels);
+    context.beginPath();
+    context.rect(0, 0, cellPixels, cellPixels);
+    context.clip();
+    drawClusterFrame(context, view, palette, density);
+    context.restore();
+  }
+
   const renderMs = performance.now() - startedAt;
 
   const blob = await new Promise<Blob | null>((resolve) => {
@@ -553,6 +567,7 @@ export async function getMaquetteAtlas(): Promise<MaquetteAtlas | null> {
     byteLength: blob.size,
     renderMs,
     rowForArchetype,
+    clusterRow,
     dispose: () => {
       URL.revokeObjectURL(url);
 
@@ -565,6 +580,101 @@ export async function getMaquetteAtlas(): Promise<MaquetteAtlas | null> {
   cached = atlas;
 
   return atlas;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Clusters                                                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A neighbourhood: a plinth carrying several simplified masses.
+ *
+ * Drawn into the same sheet, from the same palette and the same light, because a
+ * cluster sits next to individual miniatures and a CSS approximation of one
+ * looks exactly like what it is. Three densities rather than a shape per count —
+ * the number is written on it, so the massing only has to say "a few" or "a lot".
+ */
+function drawClusterFrame(
+  context: CanvasRenderingContext2D,
+  view: Projection,
+  palette: MaquettePalette,
+  density: number,
+): void {
+  drawContactShadow(context, LOT, view, { strength: 0.6, spread: 1.05 });
+  drawBox(context, LOT, view, { z0: -0.26, z1: 0, colour: palette.lot });
+
+  const edge = [
+    project({ x: LOT.x0, y: LOT.y0, z: 0 }, view),
+    project({ x: LOT.x1, y: LOT.y0, z: 0 }, view),
+    project({ x: LOT.x1, y: LOT.y1, z: 0 }, view),
+    project({ x: LOT.x0, y: LOT.y1, z: 0 }, view),
+  ] as const;
+
+  for (let index = 0; index < edge.length; index += 1) {
+    strokeLine(
+      context,
+      edge[index],
+      edge[(index + 1) % edge.length],
+      palette.lotEdge,
+      view.scale * 0.075,
+      0.6,
+    );
+  }
+
+  /*
+    Small houses on a grid, back to front. Heights vary a little so the group
+    reads as several buildings rather than one extruded block, but they stay
+    lower than a single miniature: a cluster is a place, not a landmark.
+  */
+  /*
+    Few and large, not many and small. Seven little houses on a lot this size
+    put each one at about four pixels, which resolved to a dark smudge with some
+    pale speckle. Three to five volumes at nearly the size of a single miniature
+    read as a group of buildings at the zoom where clusters actually appear.
+  */
+  const plans: readonly (readonly [number, number, number])[] = [
+    [1.5, 1.4, 2.7],
+    [5.3, 2.1, 3.5],
+    [3.0, 4.7, 2.5],
+    [6.4, 5.0, 3.0],
+    [0.7, 4.4, 2.2],
+  ];
+  const count = [3, 4, 5][Math.min(Math.max(density, 0), 2)];
+  const width = 3.0;
+  const depth = 2.6;
+
+  const visible = plans
+    .slice(0, count)
+    .map(([x, y, height]) => ({
+      footprint: { x0: x, x1: x + width, y0: y, y1: y + depth },
+      height,
+    }))
+    .sort((a, b) => footprintDepth(a.footprint) - footprintDepth(b.footprint));
+
+  for (const { footprint, height } of visible) {
+    drawBox(context, footprint, view, {
+      z0: 0,
+      z1: height,
+      colour: palette.body,
+      edge: true,
+    });
+    // A dark cap, which is what makes each block read as a roof at this size.
+    drawBox(context, inset(footprint, -0.16), view, {
+      z0: height,
+      z1: height + 0.5,
+      colour: palette.roof,
+      edge: true,
+    });
+  }
+}
+
+/** Which sheet column carries the neighbourhood for this many homes. */
+export function clusterColumnForCount(count: number): number {
+  if (count >= 15) {
+    return 2;
+  }
+
+  return count >= 5 ? 1 : 0;
 }
 
 /** Exported for the prototype page, which renders single frames for review. */

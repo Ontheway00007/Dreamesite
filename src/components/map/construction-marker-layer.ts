@@ -4,6 +4,7 @@ import type { Map as MapboxMap } from "mapbox-gl";
 import "@/components/map/construction-markers.css";
 
 import {
+  clusterColumnForCount,
   getMaquetteAtlas,
   LOT_CENTRE_IN_CELL,
   type MaquetteAtlas,
@@ -62,10 +63,17 @@ import type { MappableProperty, Property } from "@/types";
  * second cannot miss one, and the loop does a fifth of the work of a 60Hz tick. */
 const EVALUATE_EVERY_MS = 50;
 
-/** Camera-aware sizing. Below the near zoom the model simplifies by shrinking. */
-const SCALE_AT_FAR_ZOOM = 0.66;
+/**
+ * Camera-aware sizing.
+ *
+ * The far end is set by the corridor view, which is where a visitor arrives: at
+ * zoom 10–11 a miniature still has to be recognisable as a building against a
+ * dark basemap. Shrinking further to keep the map uncluttered turned the models
+ * into grey smudges, which is worse than a slightly larger marker.
+ */
+const SCALE_AT_FAR_ZOOM = 0.84;
 const SCALE_AT_NEAR_ZOOM = 1.18;
-const FAR_ZOOM = 12;
+const FAR_ZOOM = 10.5;
 const NEAR_ZOOM = 16;
 
 /**
@@ -503,27 +511,48 @@ export class ConstructionMarkerLayer {
     count: number,
     at: [number, number],
   ): ClusterEntry {
+    const atlas = this.atlas;
+
+    if (!atlas) {
+      throw new Error("createClusterMarker called before the atlas was ready");
+    }
+
     const root = document.createElement("button");
     root.type = "button";
     root.className = "dreame-cluster";
+    root.style.setProperty(
+      "--maquette-sheet-size",
+      `${atlas.columns * 100}% ${atlas.rows * 100}%`,
+    );
 
+    /*
+      The neighbourhood comes out of the same sheet as the individual miniatures,
+      so a cluster is lit and coloured like the buildings it stands in for. A CSS
+      approximation sitting next to a rendered maquette reads as a placeholder.
+    */
     const plinth = document.createElement("span");
     plinth.className = "dreame-cluster__plinth";
     plinth.setAttribute("aria-hidden", "true");
+    plinth.style.backgroundImage = `url(${atlas.url})`;
+    plinth.style.backgroundPosition = backgroundPositionFor(
+      atlas,
+      clusterColumnForCount(count),
+      atlas.clusterRow,
+    );
 
-    const stack = document.createElement("span");
-    stack.className = "dreame-cluster__stack";
-    stack.setAttribute("aria-hidden", "true");
+    const caption = document.createElement("span");
+    caption.className = "dreame-cluster__caption";
+    caption.setAttribute("aria-hidden", "true");
 
     const countEl = document.createElement("span");
     countEl.className = "dreame-cluster__count";
 
     const labelEl = document.createElement("span");
     labelEl.className = "dreame-cluster__label";
-    labelEl.setAttribute("aria-hidden", "true");
     labelEl.textContent = "HOMES";
 
-    root.append(plinth, stack, countEl, labelEl);
+    caption.append(countEl, labelEl);
+    root.append(plinth, caption);
 
     const entry: ClusterEntry = {
       marker: new mapboxgl.Marker({ element: root, anchor: "center" }).setLngLat(at),
@@ -548,6 +577,19 @@ export class ConstructionMarkerLayer {
 
     if (countEl) {
       countEl.textContent = String(entry.count);
+    }
+
+    // The neighbourhood gets denser in tiers, so a recount can change the art.
+    const plinth = entry.root.querySelector<HTMLElement>(
+      ".dreame-cluster__plinth",
+    );
+
+    if (plinth && this.atlas) {
+      plinth.style.backgroundPosition = backgroundPositionFor(
+        this.atlas,
+        clusterColumnForCount(entry.count),
+        this.atlas.clusterRow,
+      );
     }
 
     entry.root.setAttribute(
