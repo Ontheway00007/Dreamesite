@@ -19,18 +19,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/properties" },
 };
 
-/**
- * Server-rendered listing.
- *
- * This is the Suspense fallback for the explorer, which means it is what search
- * engines and visitors without JavaScript receive: the complete set of homes as
- * real HTML, rather than an empty shell.
- */
-function PropertyListFallback({
-  properties,
-}: {
-  properties: readonly Property[];
-}) {
+function PropertyListFallback({ properties }: { properties: readonly Property[] }) {
   return (
     <div className="grid gap-6 pb-16 sm:grid-cols-2 xl:grid-cols-3">
       {properties.map((property) => (
@@ -45,26 +34,31 @@ export default async function PropertiesPage() {
 
   return (
     <>
-      <Container className="pt-(--header-height)">
-        <div className="max-w-2xl py-10 md:py-12">
-          <Eyebrow>Homes</Eyebrow>
-          <Heading level={1} as="h1" className="mt-5">
-            Every home on the corridor map.
-          </Heading>
-          <Text size="lead" className="mt-6">
-            Each marker is one of our homes in {serviceAreas.join(", ")}. Filter
-            by status, suburb or bedrooms — the list beside the map carries the
-            same information as text.
-          </Text>
+      <section className="bg-background-alt relative overflow-hidden pt-[calc(var(--header-height)+4rem)] pb-16 md:pt-[calc(var(--header-height)+6rem)] md:pb-24">
+        <div
+          aria-hidden
+          className="outline-type pointer-events-none absolute -right-8 -bottom-[0.28em] font-display text-[clamp(10rem,26vw,28rem)] leading-none tracking-[-0.06em] opacity-40"
+        >
+          ATLAS
         </div>
-      </Container>
+        <div aria-hidden className="bg-accent absolute top-1/2 right-[9%] size-28 rounded-full opacity-[0.18] blur-2xl" />
 
-      <Container>
-        {/*
-         * The explorer reads filters from the query string, so it needs a
-         * Suspense boundary. The fallback is the full server-rendered list,
-         * which keeps the page useful before and without hydration.
-         */}
+        <Container className="relative grid gap-10 lg:grid-cols-12 lg:items-end">
+          <div className="lg:col-span-8">
+            <Eyebrow className="editorial-kicker text-accent">The portfolio</Eyebrow>
+            <Heading level="display" as="h1" className="mt-8 max-w-5xl">
+              Find your place
+              <span className="block pl-[0.9em] italic">in the north.</span>
+            </Heading>
+          </div>
+          <Text size="lead" className="max-w-md lg:col-span-4 lg:pb-3">
+            Every marker is a published home in {serviceAreas.join(", ")}.
+            Filter the same live portfolio by stage, suburb or bedrooms.
+          </Text>
+        </Container>
+      </section>
+
+      <Container className="pt-8 lg:pt-12">
         <Suspense fallback={<PropertyListFallback properties={properties} />}>
           <PropertyExplorer properties={properties} />
         </Suspense>

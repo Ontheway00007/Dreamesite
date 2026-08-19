@@ -17,7 +17,7 @@ import {
 import { cn } from "@/lib/utils/cn";
 
 const selectClassName =
-  "border-border bg-surface text-foreground focus-visible:border-accent h-11 w-full appearance-none rounded-lg border px-4 pr-9 text-sm transition-colors duration-(--duration-fast)";
+  "border-border bg-surface text-foreground focus-visible:border-accent h-11 w-full appearance-none rounded-[0.4rem_1rem_1rem_1rem] border px-4 pr-9 text-sm transition-colors duration-(--duration-fast)";
 
 const chevron =
   "pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-foreground-subtle";
@@ -60,7 +60,7 @@ export function PropertyFilters({
       <div
         role="group"
         aria-label="Filter by status"
-        className="flex flex-wrap gap-2"
+        className="flex flex-wrap gap-2 xl:flex-nowrap xl:gap-1.5"
       >
         {(["all", ...propertyStatusOrder] as StatusFilter[]).map((status) => {
           const isActive = filters.status === status;
@@ -73,7 +73,7 @@ export function PropertyFilters({
               aria-pressed={isActive}
               onClick={() => onChange("status", status)}
               className={cn(
-                "inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-medium tracking-[0.12em] uppercase transition-colors duration-(--duration-fast)",
+                "inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-[0.66rem] font-semibold tracking-[0.1em] whitespace-nowrap uppercase transition-colors duration-(--duration-fast)",
                 isActive
                   ? "border-accent bg-accent-soft text-foreground"
                   : "border-border text-foreground-subtle hover:text-foreground hover:border-border-strong",
@@ -168,7 +168,7 @@ export function PropertyFilters({
             value={filters.query}
             onChange={(event) => onChange("query", event.target.value)}
             placeholder="Name or suburb"
-            className="border-border bg-surface text-foreground placeholder:text-foreground-subtle focus-visible:border-accent h-11 w-full rounded-lg border pr-4 pl-10 text-sm transition-colors duration-(--duration-fast)"
+            className="border-border bg-surface text-foreground placeholder:text-foreground-subtle focus-visible:border-accent h-11 w-full rounded-[0.4rem_1rem_1rem_1rem] border pr-4 pl-10 text-sm transition-colors duration-(--duration-fast)"
           />
         </div>
 

@@ -6,11 +6,11 @@ import { cn } from "@/lib/utils/cn";
 
 const buttonVariants = {
   primary:
-    "bg-foreground text-foreground-inverse hover:bg-accent-strong active:bg-accent",
+    "bg-foreground text-foreground-inverse hover:bg-accent active:bg-accent-strong",
   accent:
     "bg-accent text-accent-foreground hover:bg-accent-strong shadow-accent",
   outline:
-    "border border-border-strong text-foreground hover:border-accent hover:text-accent",
+    "border border-border-strong bg-background/20 text-foreground hover:border-accent hover:bg-accent-soft hover:text-accent-strong",
   ghost: "text-foreground-muted hover:text-foreground hover:bg-surface-raised",
 } as const;
 
@@ -47,7 +47,7 @@ type ButtonAsLinkProps = ButtonBaseProps &
 export type ButtonProps = ButtonAsButtonProps | ButtonAsLinkProps;
 
 const baseClassName =
-  "inline-flex items-center justify-center rounded-full font-medium uppercase tracking-[0.16em] whitespace-nowrap transition-[background-color,color,border-color,box-shadow,transform] duration-(--duration-base) ease-luxe select-none hover:-translate-y-px active:translate-y-0 disabled:pointer-events-none disabled:opacity-45 aria-disabled:pointer-events-none aria-disabled:opacity-45";
+  "inline-flex items-center justify-center rounded-[0.45rem_1.4rem_1.4rem_1.4rem] font-semibold uppercase tracking-[0.13em] whitespace-nowrap transition-[background-color,color,border-color,box-shadow,transform] duration-(--duration-base) ease-luxe select-none hover:-translate-y-0.5 active:translate-y-0 disabled:pointer-events-none disabled:opacity-45 aria-disabled:pointer-events-none aria-disabled:opacity-45";
 
 /**
  * Primary action component. Renders a `next/link` anchor when `href` is

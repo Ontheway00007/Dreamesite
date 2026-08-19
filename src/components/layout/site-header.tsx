@@ -11,7 +11,7 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { Menu, X } from "lucide-react";
+import { ArrowUpRight, Menu, X } from "lucide-react";
 
 import { Container } from "@/components/layout/container";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
@@ -162,58 +162,78 @@ export function SiteHeader({
   return (
     <header
       ref={headerRef}
-      className={cn(
-        "bg-background/95 fixed inset-x-0 top-0 z-50 backdrop-blur-xl transition-[background-color,border-color] duration-(--duration-base) ease-luxe",
-        isScrolled || isOpen
-          ? "border-border border-b shadow-soft"
-          : "border-b border-transparent",
-      )}
+      className="pointer-events-none fixed inset-x-0 top-0 z-50"
     >
-      <Container className="flex h-(--header-height) items-center justify-between gap-6">
-        <Link
-          href="/"
-          className="font-display text-xl font-light tracking-[0.28em] uppercase"
-          onClick={() => close(false)}
+      <Container>
+        <div
+          className={cn(
+            "pointer-events-auto mt-3 flex h-[calc(var(--header-height)-1.1rem)] items-center justify-between gap-5 rounded-[1.4rem] border px-3.5 backdrop-blur-2xl transition-[background-color,border-color,box-shadow,transform] duration-(--duration-base) ease-luxe sm:px-5",
+            isScrolled || isOpen
+              ? "border-border-strong bg-background/92 shadow-raised"
+              : "border-border bg-background/72 shadow-soft",
+          )}
         >
-          {companyName}
-        </Link>
+          <Link
+            href="/"
+            className="group flex min-w-0 items-center gap-3"
+            onClick={() => close(false)}
+          >
+            <span
+              aria-hidden="true"
+              className="bg-accent text-accent-foreground grid size-8 shrink-0 place-items-center rounded-full font-display text-lg italic transition-transform duration-(--duration-base) ease-luxe motion-safe:group-hover:rotate-12"
+            >
+              M
+            </span>
+            <span className="truncate text-[0.72rem] font-semibold tracking-[0.16em] uppercase sm:text-xs">
+              {companyName}
+            </span>
+          </Link>
 
-        <nav aria-label="Primary" className="hidden items-center gap-8 xl:flex">
-          {primaryNav.map((link) => (
+          <nav aria-label="Primary" className="hidden items-center gap-7 xl:flex">
+          {primaryNav.map((link, index) => (
             <Link
               key={link.href}
               href={link.href}
               onClick={(event) => handleNavClick(event, link.href)}
-              className="text-foreground-muted hover:text-foreground text-xs font-medium tracking-[0.2em] uppercase transition-colors duration-(--duration-fast)"
+              className="text-foreground-muted hover:text-foreground group flex items-baseline gap-1.5 text-[0.68rem] font-semibold tracking-[0.14em] uppercase transition-colors duration-(--duration-fast)"
             >
+              <span className="text-accent text-[0.55rem] tabular-nums">
+                {String(index + 1).padStart(2, "0")}
+              </span>
               {link.label}
             </Link>
           ))}
-        </nav>
+          </nav>
 
-        <div className="flex items-center gap-2.5">
-          <ThemeToggle />
-          <div className="hidden xl:block">
-            <Button href={contactHref} variant="outline" size="sm">
-              Contact us
-            </Button>
+          <div className="flex items-center gap-2">
+            <ThemeToggle className="size-9 border-0 bg-transparent shadow-none" />
+            <div className="hidden xl:block">
+              <Button
+                href={contactHref}
+                variant="accent"
+                size="sm"
+                iconRight={<ArrowUpRight size={14} aria-hidden />}
+              >
+                Start a conversation
+              </Button>
+            </div>
+
+            <button
+              ref={toggleRef}
+              type="button"
+              onClick={() => (isOpen ? close(true) : setIsOpen(true))}
+              aria-expanded={isOpen}
+              aria-controls="mobile-navigation"
+              aria-label={isOpen ? "Close menu" : "Open menu"}
+              className="text-foreground inline-flex size-9 items-center justify-center rounded-full xl:hidden"
+            >
+              {isOpen ? (
+                <X size={19} aria-hidden />
+              ) : (
+                <Menu size={19} aria-hidden />
+              )}
+            </button>
           </div>
-
-          <button
-            ref={toggleRef}
-            type="button"
-            onClick={() => (isOpen ? close(true) : setIsOpen(true))}
-            aria-expanded={isOpen}
-            aria-controls="mobile-navigation"
-            aria-label={isOpen ? "Close menu" : "Open menu"}
-            className="text-foreground -mr-2 inline-flex size-10 items-center justify-center rounded-full xl:hidden"
-          >
-            {isOpen ? (
-              <X size={20} aria-hidden />
-            ) : (
-              <Menu size={20} aria-hidden />
-            )}
-          </button>
         </div>
       </Container>
 
@@ -223,7 +243,7 @@ export function SiteHeader({
         inert={!isOpen}
         data-lenis-prevent
         className={cn(
-          "border-border bg-background/98 absolute inset-x-0 top-full h-[calc(100dvh-var(--header-height))] overflow-y-auto border-t backdrop-blur-xl transition-[opacity,transform] duration-(--duration-base) ease-luxe xl:hidden",
+          "border-border-strong bg-background/98 pointer-events-auto absolute inset-x-5 top-[calc(var(--header-height)+0.35rem)] h-[calc(100dvh-var(--header-height)-1.35rem)] overflow-y-auto rounded-[2rem] border shadow-raised backdrop-blur-2xl transition-[opacity,transform] duration-(--duration-base) ease-luxe sm:inset-x-8 xl:hidden",
           isOpen
             ? "translate-y-0 opacity-100"
             : "pointer-events-none -translate-y-3 opacity-0",
@@ -231,13 +251,16 @@ export function SiteHeader({
       >
         <Container className="flex flex-col py-10">
           <nav aria-label="Mobile" className="flex flex-col">
-            {primaryNav.map((link) => (
+            {primaryNav.map((link, index) => (
               <Link
                 key={link.href}
                 href={link.href}
                 onClick={(event) => handleNavClick(event, link.href)}
-                className="font-display text-heading-2 text-foreground border-border border-b py-4 font-light"
+                className="font-display text-heading-2 text-foreground border-border flex items-baseline gap-4 border-b py-4"
               >
+                <span className="font-sans text-accent text-[0.62rem] font-semibold tracking-[0.18em]">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
                 {link.label}
               </Link>
             ))}
@@ -250,7 +273,7 @@ export function SiteHeader({
             fullWidth
             onClick={() => close(false)}
           >
-            Contact us
+            Start a conversation
           </Button>
         </Container>
       </div>

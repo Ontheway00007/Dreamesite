@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 
-import { Cormorant_Garamond, Inter } from "next/font/google";
+import { Instrument_Serif, Manrope } from "next/font/google";
 import Script from "next/script";
 
 import { SiteFooter } from "@/components/layout/site-footer";
@@ -12,6 +12,7 @@ import { env } from "@/lib/env";
 import { getPublicSettings } from "@/lib/settings/public-settings";
 import { siteConfig } from "@/lib/site-config";
 import {
+  ADMIN_SITE_THEME,
   DEFAULT_SITE_THEME,
   THEME_STORAGE_KEY,
   themeColor,
@@ -20,18 +21,18 @@ import { AppProviders } from "@/providers/app-providers";
 
 import "./globals.css";
 
-const inter = Inter({
+const manrope = Manrope({
   subsets: ["latin"],
   display: "swap",
-  variable: "--font-inter",
+  variable: "--font-manrope",
 });
 
-// Only the two weights the type scale actually uses are downloaded.
-const cormorant = Cormorant_Garamond({
+const instrument = Instrument_Serif({
   subsets: ["latin"],
-  weight: ["300", "400"],
+  weight: "400",
+  style: ["normal", "italic"],
   display: "swap",
-  variable: "--font-cormorant",
+  variable: "--font-instrument",
 });
 
 /**
@@ -92,7 +93,7 @@ export const viewport: Viewport = {
   themeColor: themeColor[DEFAULT_SITE_THEME],
 };
 
-const themeBootstrap = `(function(){try{var t=localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)});if(t!=="light"&&t!=="dark")t=${JSON.stringify(DEFAULT_SITE_THEME)};var r=document.documentElement;r.setAttribute("data-theme",t);r.style.colorScheme=t;var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",t==="light"?${JSON.stringify(themeColor.light)}:${JSON.stringify(themeColor.dark)})}catch(e){}})()`;
+const themeBootstrap = `(function(){try{var t=location.pathname.indexOf('/admin')===0?${JSON.stringify(ADMIN_SITE_THEME)}:localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)});if(t!=="light"&&t!=="dark")t=${JSON.stringify(DEFAULT_SITE_THEME)};var r=document.documentElement;r.setAttribute("data-theme",t);r.style.colorScheme=t;var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",t==="light"?${JSON.stringify(themeColor.light)}:${JSON.stringify(themeColor.dark)})}catch(e){}})()`;
 
 export default async function RootLayout({
   children,
@@ -106,7 +107,7 @@ export default async function RootLayout({
       lang="en-AU"
       data-theme={DEFAULT_SITE_THEME}
       suppressHydrationWarning
-      className={`${inter.variable} ${cormorant.variable}`}
+      className={`${manrope.variable} ${instrument.variable}`}
     >
       <body className="grain min-h-dvh antialiased">
         <Script id="dreame-theme" strategy="beforeInteractive">

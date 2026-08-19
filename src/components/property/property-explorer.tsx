@@ -76,8 +76,8 @@ export function PropertyExplorer({ properties }: PropertyExplorerProps) {
   const hiddenFromMap = filtered.length - mappableCount;
 
   return (
-    <div className="pb-16">
-      <div className="border-border border-b pb-8">
+    <div className="pb-24">
+      <div className="paper-glass border-border-strong sticky top-[calc(var(--header-height)+0.75rem)] z-30 rounded-[0.55rem_1.6rem_1.6rem_1.6rem] border p-4 shadow-raised lg:p-5">
         <PropertyFilters
           filters={filters}
           suburbs={suburbs}
@@ -100,7 +100,7 @@ export function PropertyExplorer({ properties }: PropertyExplorerProps) {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-baseline justify-between gap-4 py-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-4 py-7">
         {/* Announced politely: results and selection, never camera movement. */}
         <p aria-live="polite" className="text-foreground-muted text-sm">
           <span className="text-foreground font-medium">{label}</span>
@@ -120,10 +120,10 @@ export function PropertyExplorer({ properties }: PropertyExplorerProps) {
         </button>
       </div>
 
-      <div className="lg:grid lg:grid-cols-[minmax(22rem,26rem)_1fr] lg:items-start lg:gap-8">
+      <div className="lg:grid lg:grid-cols-[minmax(22rem,28rem)_1fr] lg:items-start lg:gap-10">
         <div
           className={cn(
-            "lg:max-h-[calc(100dvh-9rem)] lg:overflow-y-auto lg:[scrollbar-color:var(--border-strong)_transparent] lg:[scrollbar-width:thin]",
+            "lg:max-h-[calc(100dvh-10.5rem)] lg:overflow-y-auto lg:pr-2 lg:[scrollbar-color:var(--border-strong)_transparent] lg:[scrollbar-width:thin]",
             view === "list" ? "block" : "hidden lg:block",
           )}
         >
@@ -137,7 +137,7 @@ export function PropertyExplorer({ properties }: PropertyExplorerProps) {
 
         <div
           className={cn(
-            "relative lg:sticky lg:top-[6.25rem]",
+            "relative lg:sticky lg:top-[calc(var(--header-height)+1rem)]",
             view === "map" ? "block" : "hidden lg:block",
           )}
         >
@@ -147,7 +147,7 @@ export function PropertyExplorer({ properties }: PropertyExplorerProps) {
             never the only way to read this page.
           </p>
 
-          <div className="border-border h-[65dvh] overflow-hidden rounded-xl border lg:h-[calc(100dvh-9rem)]">
+          <div className="map-portal border-border-strong h-[65dvh] overflow-hidden border shadow-raised lg:h-[calc(100dvh-10.5rem)]">
             {token ? (
               <PropertyMapLoader
                 properties={filtered}

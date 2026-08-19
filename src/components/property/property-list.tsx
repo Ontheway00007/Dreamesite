@@ -52,7 +52,7 @@ export function PropertyList({
 
   return (
     <div ref={listRef} data-lenis-prevent className={cn("min-h-0", className)}>
-      <ul className="border-border border-t">
+      <ul className="space-y-3">
         {properties.map((property) => (
           <PropertyListItem
             key={property.id}

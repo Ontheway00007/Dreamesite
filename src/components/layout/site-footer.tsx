@@ -1,10 +1,11 @@
 import Link from "next/link";
 
-import { Mail, MapPin, Phone } from "lucide-react";
+import { ArrowUpRight, Mail, MapPin, Phone } from "lucide-react";
 
 import { Container } from "@/components/layout/container";
 import { Text } from "@/components/ui/typography";
 import { getPublicSettings, telHref } from "@/lib/settings/public-settings";
+import { ENQUIRY_ANCHOR } from "@/lib/routes";
 import { primaryNav, siteConfig } from "@/lib/site-config";
 
 /**
@@ -30,13 +31,44 @@ export async function SiteFooter() {
   );
 
   return (
-    <footer className="hairline-top bg-background-alt py-16 md:py-20">
-      <Container className="grid gap-12 md:grid-cols-[1.2fr_1fr_1fr]">
-        <div className="max-w-sm space-y-4">
-          <p className="font-display text-2xl font-light tracking-[0.28em] uppercase">
-            {settings.companyName}
-          </p>
-          <Text size="small">{siteConfig.description}</Text>
+    <footer className="relative overflow-hidden bg-[#172017] py-16 text-[#f7f1e6] md:py-24">
+      <div
+        aria-hidden="true"
+        className="absolute -right-24 -bottom-56 size-[34rem] rounded-full border border-[#f7f1e6]/10"
+      />
+      <div
+        aria-hidden="true"
+        className="absolute -right-8 -bottom-40 size-[24rem] rounded-full border border-[#ca4d31]/55"
+      />
+
+      <Container>
+        <div className="grid gap-12 border-b border-[#f7f1e6]/15 pb-16 lg:grid-cols-12 lg:items-end">
+          <div className="lg:col-span-9">
+            <p className="text-[0.68rem] font-semibold tracking-[0.2em] text-[#9db495] uppercase">
+              A home starts with a conversation
+            </p>
+            <a
+              href={ENQUIRY_ANCHOR}
+              className="group mt-5 flex max-w-5xl items-end justify-between gap-6"
+            >
+              <span className="font-display text-[clamp(3.2rem,8vw,8.5rem)] leading-[0.82] tracking-[-0.045em] text-balance">
+                Let&apos;s build something grounded.
+              </span>
+              <span className="mb-2 grid size-14 shrink-0 place-items-center rounded-full bg-[#ca4d31] text-white transition-transform duration-(--duration-base) ease-luxe motion-safe:group-hover:-translate-y-1 motion-safe:group-hover:translate-x-1 lg:size-18">
+                <ArrowUpRight aria-hidden className="size-6 lg:size-8" />
+              </span>
+            </a>
+          </div>
+        </div>
+
+        <div className="grid gap-12 py-14 md:grid-cols-[1.35fr_0.8fr_1fr]">
+          <div className="max-w-md space-y-5">
+            <p className="text-xs font-semibold tracking-[0.2em] uppercase">
+              {settings.companyName}
+            </p>
+            <Text size="small" className="!text-[#f7f1e6]/62">
+              {siteConfig.description}
+            </Text>
 
           {socials.length > 0 && (
             <ul className="flex flex-wrap gap-4 pt-2">
@@ -46,7 +78,7 @@ export async function SiteFooter() {
                     href={social.href}
                     target="_blank"
                     rel="noreferrer noopener"
-                    className="text-foreground-muted hover:text-foreground text-sm transition-colors duration-(--duration-fast)"
+                    className="text-sm text-[#f7f1e6]/62 transition-colors duration-(--duration-fast) hover:text-[#f7f1e6]"
                   >
                     {social.label}
                   </a>
@@ -54,35 +86,35 @@ export async function SiteFooter() {
               ))}
             </ul>
           )}
-        </div>
+          </div>
 
-        <nav aria-label="Footer" className="space-y-3">
-          <p className="text-eyebrow text-foreground-subtle font-medium uppercase">
+          <nav aria-label="Footer" className="space-y-4">
+          <p className="text-[0.62rem] font-semibold tracking-[0.2em] text-[#9db495] uppercase">
             Explore
           </p>
-          <ul className="space-y-2">
+          <ul className="space-y-3">
             {primaryNav.map((link) => (
               <li key={link.href}>
                 <Link
                   href={link.href}
-                  className="text-foreground-muted hover:text-foreground text-sm transition-colors duration-(--duration-fast)"
+                  className="text-sm text-[#f7f1e6]/66 transition-colors duration-(--duration-fast) hover:text-[#f7f1e6]"
                 >
                   {link.label}
                 </Link>
               </li>
             ))}
           </ul>
-        </nav>
+          </nav>
 
-        <div className="space-y-3">
-          <p className="text-eyebrow text-foreground-subtle font-medium uppercase">
+          <div className="space-y-4">
+          <p className="text-[0.62rem] font-semibold tracking-[0.2em] text-[#9db495] uppercase">
             Contact
           </p>
-          <ul className="space-y-2 text-sm">
+          <ul className="space-y-3 text-sm">
             <li>
               <a
                 href={`mailto:${settings.contactEmail}`}
-                className="text-foreground-muted hover:text-foreground inline-flex items-center gap-2 transition-colors duration-(--duration-fast)"
+                className="inline-flex items-center gap-2 text-[#f7f1e6]/66 transition-colors duration-(--duration-fast) hover:text-[#f7f1e6]"
               >
                 <Mail size={15} aria-hidden />
                 {settings.contactEmail}
@@ -91,25 +123,25 @@ export async function SiteFooter() {
             <li>
               <a
                 href={telHref(settings.contactPhone)}
-                className="text-foreground-muted hover:text-foreground inline-flex items-center gap-2 transition-colors duration-(--duration-fast)"
+                className="inline-flex items-center gap-2 text-[#f7f1e6]/66 transition-colors duration-(--duration-fast) hover:text-[#f7f1e6]"
               >
                 <Phone size={15} aria-hidden />
                 {settings.contactPhone}
               </a>
             </li>
-            <li className="text-foreground-subtle inline-flex items-start gap-2">
+            <li className="inline-flex items-start gap-2 text-[#f7f1e6]/45">
               <MapPin size={15} className="mt-0.5 shrink-0" aria-hidden />
               {/* The published address when there is one, the region otherwise. */}
               {settings.addressDisplay ?? siteConfig.region}
             </li>
           </ul>
+          </div>
         </div>
-      </Container>
 
-      <Container className="mt-14">
-        <Text size="small" tone="subtle">
-          &copy; {year} {siteConfig.legalName}. {siteConfig.region}.
-        </Text>
+        <div className="flex flex-wrap items-center justify-between gap-4 border-t border-[#f7f1e6]/15 pt-7 text-[0.66rem] tracking-[0.12em] text-[#f7f1e6]/42 uppercase">
+          <p>&copy; {year} {siteConfig.legalName}</p>
+          <p>{siteConfig.region}</p>
+        </div>
       </Container>
     </footer>
   );

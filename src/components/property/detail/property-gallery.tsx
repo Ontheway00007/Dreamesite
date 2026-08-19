@@ -26,7 +26,7 @@ export function PropertyGallery({ visuals, alt }: PropertyGalleryProps) {
 
   return (
     <div>
-      <div className="border-border bg-background-alt relative aspect-16/9 overflow-hidden rounded-xl border">
+      <div className="editorial-frame border-border-strong bg-background relative aspect-[5/4] overflow-hidden border shadow-raised">
         {active.url ? (
           <Image
             src={active.url}
@@ -49,7 +49,7 @@ export function PropertyGallery({ visuals, alt }: PropertyGalleryProps) {
         )}
       </div>
 
-      <div aria-label="Property images" className="mt-4 flex flex-wrap gap-3">
+      <div aria-label="Property images" className="mt-5 flex flex-wrap gap-3">
         {visuals.map((visual, index) => {
           const isActive = index === activeIndex;
 
@@ -65,7 +65,7 @@ export function PropertyGallery({ visuals, alt }: PropertyGalleryProps) {
               }
               onClick={() => setActiveIndex(index)}
               className={cn(
-                "bg-background-alt relative aspect-4/3 w-24 overflow-hidden rounded-lg border transition-colors duration-(--duration-fast) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--ring)",
+                "bg-background-alt relative aspect-[4/3] w-24 overflow-hidden rounded-[0.35rem_1rem_1rem_1rem] border transition-[border-color,transform] duration-(--duration-fast) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--ring) motion-safe:hover:-translate-y-0.5",
                 isActive
                   ? "border-accent"
                   : "border-border hover:border-border-strong",

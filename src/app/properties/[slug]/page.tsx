@@ -92,17 +92,19 @@ function DetailSection({
   children: React.ReactNode;
 }) {
   return (
-    <section id={id} className="border-border scroll-mt-28 border-t py-14 md:py-20">
-      <Reveal>
-        <Eyebrow>{eyebrow}</Eyebrow>
-        <Heading level={3} as="h2" className="mt-4">
-          {title}
-        </Heading>
-        {description ? (
-          <Text className="mt-4 max-w-2xl">{description}</Text>
-        ) : null}
-      </Reveal>
-      <div className="mt-10">{children}</div>
+    <section id={id} className="border-border scroll-mt-28 border-t py-16 md:py-24">
+      <div className="grid gap-10 lg:grid-cols-12 lg:gap-16">
+        <Reveal className="lg:col-span-4">
+          <Eyebrow className="editorial-kicker text-accent">{eyebrow}</Eyebrow>
+          <Heading level={2} as="h2" className="mt-6">
+            {title}
+          </Heading>
+          {description ? (
+            <Text className="mt-5 max-w-md">{description}</Text>
+          ) : null}
+        </Reveal>
+        <div className="lg:col-span-8 lg:pt-2">{children}</div>
+      </div>
     </section>
   );
 }
@@ -144,7 +146,7 @@ export default async function PropertyPage({ params }: PropertyPageProps) {
   const settings = await getPublicSettings();
 
   return (
-    <Container width="content" className="pt-(--header-height)">
+    <>
       {/*
         Two documents rather than one graph: they describe different things, and
         a crawler that rejects one should still get the other. Both contain only
@@ -159,11 +161,20 @@ export default async function PropertyPage({ params }: PropertyPageProps) {
         })}
       />
       <JsonLd data={breadcrumbSchema(property)} />
-      <div className="py-12 md:py-16">
-        <PropertyDetailHero property={property} />
-      </div>
 
-      <PropertyShowcase property={property} />
+      <section className="bg-background-alt relative overflow-hidden pt-[calc(var(--header-height)+3rem)] pb-16 md:pt-[calc(var(--header-height)+5rem)] md:pb-24">
+        <div aria-hidden className="outline-type pointer-events-none absolute -right-5 -bottom-[0.28em] font-display text-[clamp(9rem,24vw,26rem)] leading-none tracking-[-0.06em] opacity-35">HOME</div>
+        <Container className="relative grid gap-12 lg:grid-cols-12 lg:items-end">
+          <div className="lg:col-span-5 lg:pb-8">
+            <PropertyDetailHero property={property} />
+          </div>
+          <div className="lg:col-span-7">
+            <PropertyShowcase property={property} />
+          </div>
+        </Container>
+      </section>
+
+      <Container width="wide">
 
       {property.description ? (
         <DetailSection eyebrow="Overview" title="About this home">
@@ -261,6 +272,7 @@ export default async function PropertyPage({ params }: PropertyPageProps) {
           <RelatedProperties properties={related} />
         </DetailSection>
       ) : null}
-    </Container>
+      </Container>
+    </>
   );
 }

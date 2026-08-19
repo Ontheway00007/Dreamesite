@@ -2,51 +2,29 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { ArrowDown, ArrowRight, List } from "lucide-react";
+import { ArrowRight, ArrowUpRight, List } from "lucide-react";
 
+import { MapPropertyPanel } from "@/components/home/map-property-panel";
 import { PropertyMapFallback } from "@/components/map/property-map-fallback";
 import { PropertyMapLoader } from "@/components/map/property-map-loader";
 import { StatusGlyph } from "@/components/map/status-glyph";
 import { propertyStatusTokens } from "@/lib/design/property-status";
 import type { PortfolioSummary } from "@/lib/properties/portfolio-summary";
 import { PROPERTIES_ROUTE, propertyHref } from "@/lib/routes";
+import { serviceAreas } from "@/lib/site-config";
 import { cn } from "@/lib/utils/cn";
 import type { Property, PropertyStatus } from "@/types";
-
-import { MapPropertyPanel } from "@/components/home/map-property-panel";
 
 export interface MapStageProps {
   properties: readonly Property[];
   summary: PortfolioSummary;
-  /** Null when Mapbox is not configured; the stage then shows the fallback. */
   token: string | null;
 }
 
 /**
- * The opening experience: the map is the first viewport, and the navigation.
- *
- * ## Why the map is the page rather than a section in it
- *
- * A builder's portfolio is a geographic fact before it is a list. Where they
- * build, how much of it there is, and what stage each home is at are all
- * spatial questions, and a map answers them in one glance where a card grid
- * needs a paragraph of explanation. So this occupies the first screen and the
- * supporting sections below it elaborate rather than introduce.
- *
- * ## What is deliberately restrained
- *
- * The overlay covers as little of the map as it can. Brand block top-left,
- * status rail bottom-left, selected property to the right on desktop and from
- * the bottom edge on mobile. Nothing is centred over the middle of the map,
- * because the middle is where the properties are.
- *
- * ## Accessibility
- *
- * The map is not the only way through. Every published property is present as
- * a real link in the "Browse as a list" disclosure, which is a visible control
- * rather than a screen-reader-only one — a hidden focusable list moves focus
- * somewhere a sighted keyboard user cannot see. Selection changes are announced
- * politely, and the status rail is a group of real buttons with pressed state.
+ * A living build atlas rather than a conventional hero banner. Copy and map
+ * share the first viewport, so place, portfolio and brand story arrive as one
+ * composition. The property list remains available beside the visual map.
  */
 export function MapStage({ properties, summary, token }: MapStageProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -62,234 +40,205 @@ export function MapStage({ properties, summary, token }: MapStageProps) {
     [properties, statusFilter],
   );
 
-  /*
-    Resolved against the *visible* set, not the whole catalogue.
-
-    A status filter that hides the selected property therefore hides its panel
-    as a consequence of the same derivation, rather than through an effect that
-    notices afterwards and clears the id. The id itself is left alone, so
-    clearing the filter brings the selection back — which is what someone who
-    filtered to look around and then filtered back would expect.
-  */
   const selected = useMemo(
     () => visibleProperties.find((property) => property.id === selectedId) ?? null,
     [visibleProperties, selectedId],
   );
 
+  const hoveredProperty = useMemo(
+    () =>
+      hoveredPropertyId
+        ? properties.find((property) => property.id === hoveredPropertyId) ?? null
+        : null,
+    [hoveredPropertyId, properties],
+  );
+
   const handleStatusToggle = useCallback((status: PropertyStatus) => {
     setStatusFilter((current) => (current === status ? null : status));
-    // Re-fit the camera to whatever is now showing.
     setResetToken((value) => value + 1);
   }, []);
 
   const handleClose = useCallback(() => setSelectedId(null), []);
 
-  /*
-    Escape closes the preview, which is the expectation for any overlay.
-
-    `setSelectedId` is a stable setter, so the listener needs no dependencies and
-    no ref: binding once for the lifetime of the stage is correct.
-  */
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setSelectedId(null);
       }
     }
+
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
   const hasProperties = properties.length > 0;
-  
-  // Three-way hover reaction: find hovered property details
-  const hoveredProperty = useMemo(
-    () => hoveredPropertyId ? properties.find(p => p.id === hoveredPropertyId) : null,
-    [hoveredPropertyId, properties]
-  );
 
   return (
     <section
       aria-labelledby="map-stage-heading"
-      className="relative isolate h-[100svh] min-h-[36rem] w-full overflow-hidden"
+      className="bg-background relative isolate min-h-[52rem] w-full overflow-hidden pt-[calc(var(--header-height)+2.5rem)] lg:h-[100svh] lg:min-h-[49rem] lg:pt-[calc(var(--header-height)+1.5rem)]"
     >
-      {/* ---------------------------------------------------------------- */}
-      {/* The map itself, filling the stage.                               */}
-      {/* ---------------------------------------------------------------- */}
-      <div className="absolute inset-0">
-        {token === null ? (
-          <PropertyMapFallback reason="no-token" className="rounded-none" />
-        ) : (
-          <PropertyMapLoader
-            properties={visibleProperties}
-            token={token}
-            /* The resolved selection, so the map never holds a filtered-out id. */
-            selectedId={selected?.id ?? null}
-            onSelect={setSelectedId}
-            onHover={setHoveredPropertyId}
-            resetToken={resetToken}
-            /*
-              The status rail already explains what each marker means, and the
-              built-in legend rendered underneath the brand block where it was
-              unreadable. Controls sit below the header and clear the status rail.
-            */
-            showLegend={false}
-            controlPosition="top-right"
-            className="h-full w-full"
-          />
-        )}
-      </div>
-
-      {/*
-        Enhanced vignette that reacts to hover. When a property is hovered,
-        the lighting shifts to draw attention to the interaction.
-      */}
       <div
         aria-hidden="true"
-        className={cn(
-          "pointer-events-none absolute inset-0 bg-gradient-to-b transition-opacity duration-700",
-          hoveredProperty
-            ? "from-background/75 via-background/10 to-background/60"
-            : "from-background/85 via-background/20 to-background/70"
-        )}
+        className="outline-type pointer-events-none absolute -top-3 -left-5 font-display text-[clamp(9rem,23vw,26rem)] leading-none tracking-[-0.07em] opacity-45"
+      >
+        NORTH
+      </div>
+      <div
+        aria-hidden="true"
+        className="orbit-drift bg-accent absolute top-[16%] -right-24 size-72 rounded-full opacity-[0.12] blur-3xl lg:size-[30rem]"
       />
       <div
         aria-hidden="true"
-        className={cn(
-          "pointer-events-none absolute inset-y-0 left-0 w-full bg-gradient-to-r to-transparent transition-opacity duration-700 lg:w-2/3",
-          hoveredProperty ? "from-background/70 opacity-90" : "from-background/80"
-        )}
+        className="border-accent-secondary/35 absolute -bottom-48 -left-40 size-[34rem] rounded-full border"
       />
 
-      {/* ---------------------------------------------------------------- */}
-      {/* Brand block — compact, top-left, never centred over the map.     */}
-      {/* Enhanced with three-way hover reaction: typography changes.      */}
-      {/* ---------------------------------------------------------------- */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 px-5 pt-[calc(var(--header-height)+1.5rem)] sm:px-8 lg:px-12">
-        <div className="pointer-events-auto max-w-[calc(100%-4.5rem)] sm:max-w-md">
-          <h1
-            id="map-stage-heading"
-            className={cn(
-              "font-display text-foreground text-[clamp(2.1rem,5vw,3.4rem)] leading-[0.98] tracking-[-0.02em] transition-all duration-500",
-              hoveredProperty && "scale-[0.98] opacity-80"
-            )}
-          >
-            Every home.
-            <br />
-            Every stage.
-            <br />
-            <span className={cn(
-              "text-foreground-muted transition-colors duration-500",
-              hoveredProperty && "text-accent"
-            )}>
-              {hoveredProperty ? hoveredProperty.name : "One map."}
-            </span>
-          </h1>
-
-          {/*
-            Shorter on small screens. The brief is explicit that text must not
-            cover most of the map, and the longer sentence costs three lines at
-            390px where it costs one at desktop width.
-          */}
-          <p className="text-foreground-muted mt-4 max-w-sm text-sm leading-relaxed sm:mt-5 sm:text-base">
-            <span className="sm:hidden">
-              {hasProperties
-                ? "Every home we have on the ground, marked with the stage it is at."
-                : "Homes appear here as each one is published."}
-            </span>
-            <span className="hidden sm:inline">
-              {hasProperties
-                ? "Dreame builds in Melbourne’s northern growth corridor. Every home we have on the ground is on this map, marked with the stage it is actually at."
-                : "Dreame builds in Melbourne’s northern growth corridor. Homes appear on this map as each one is published."}
-            </span>
-          </p>
-
-          <div className="mt-5 flex flex-wrap items-center gap-3 sm:mt-6">
-            <a
-              href={`${PROPERTIES_ROUTE}?status=move-in-ready`}
-              className="focus-visible:ring-ring bg-foreground text-foreground-inverse hover:bg-accent-strong group inline-flex items-center gap-2 rounded-lg px-5 py-3 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none"
+      <div className="relative mx-auto grid w-full max-w-[120rem] gap-12 px-5 pb-10 sm:px-8 lg:h-[calc(100%-1rem)] lg:grid-cols-12 lg:items-stretch lg:gap-8 lg:px-12">
+        <div className="relative z-10 flex flex-col justify-between lg:col-span-5 lg:py-10">
+          <div>
+            <p className="editorial-kicker text-accent">
+              Melbourne&apos;s northern corridor
+            </p>
+            <h1
+              id="map-stage-heading"
+              className={cn(
+                "font-display text-foreground mt-8 max-w-3xl text-[clamp(4rem,8vw,8.2rem)] leading-[0.8] tracking-[-0.05em] transition-[opacity,transform] duration-700",
+                hoveredProperty && "opacity-[0.72] lg:-translate-y-2",
+              )}
             >
-              See what is available
-              <ArrowRight
-                className="size-4 transition-transform motion-safe:group-hover:translate-x-1"
-                aria-hidden="true"
-              />
-            </a>
-            <a
-              href={PROPERTIES_ROUTE}
-              className="focus-visible:ring-ring border-border-strong text-foreground hover:border-foreground hover:bg-surface/60 inline-flex items-center gap-2 rounded-lg border px-5 py-3 text-sm font-medium backdrop-blur-sm transition-colors focus-visible:ring-2 focus-visible:outline-none"
-            >
-              All projects
-            </a>
-          </div>
-        </div>
-      </div>
+              Homes that
+              <span className="block pl-[0.55em] italic">belong here.</span>
+              <span className="text-accent mt-5 block font-sans text-[0.15em] leading-none font-semibold tracking-[0.14em] uppercase">
+                {hoveredProperty ? hoveredProperty.name : "Land → line → life"}
+              </span>
+            </h1>
 
-      {/* ---------------------------------------------------------------- */}
-      {/* Status rail — part of the map interface, not four cards.         */}
-      {/* ---------------------------------------------------------------- */}
-      <div className="absolute inset-x-0 bottom-0 px-5 pb-6 sm:px-8 lg:px-12 lg:pb-8">
-        <div className="flex flex-col gap-4">
-          <StatusRail
-            summary={summary}
-            active={statusFilter}
-            onToggle={handleStatusToggle}
-            disabled={!hasProperties}
-          />
+            <p className="text-foreground-muted mt-8 max-w-md text-base leading-relaxed lg:mt-10 lg:text-lg">
+              {hasProperties
+                ? "A living atlas of the homes we are building, finishing and handing over across Melbourne’s north."
+                : "Our northern Melbourne portfolio will appear here as each home is approved for publication."}
+            </p>
 
-          <div className="flex items-center justify-between gap-4">
-            <PropertyDisclosure properties={properties} />
-
-            {/*
-              The scroll cue sits left of centre rather than bottom-right, where
-              the zoom controls and the Mapbox attribution now live. Attribution
-              is required, so the cue moves rather than the credit.
-            */}
-            {hasProperties ? (
-              <p
-                aria-hidden="true"
-                className="text-foreground-subtle hidden items-center gap-2 text-xs tracking-[0.18em] uppercase sm:flex"
+            <div className="mt-8 flex flex-wrap items-center gap-3">
+              <a
+                href={`${PROPERTIES_ROUTE}?status=move-in-ready`}
+                className="focus-visible:ring-ring bg-accent text-accent-foreground hover:bg-accent-strong group inline-flex min-h-13 items-center gap-3 rounded-[0.45rem_1.5rem_1.5rem_1.5rem] px-6 text-xs font-semibold tracking-[0.11em] uppercase shadow-accent transition-[background-color,transform] focus-visible:ring-2 focus-visible:outline-none motion-safe:hover:-translate-y-1"
               >
-                Scroll
-                <ArrowDown className="size-3.5 motion-safe:animate-bounce" />
-              </p>
-            ) : null}
-            <span className="hidden lg:block lg:w-40" aria-hidden="true" />
+                Available homes
+                <ArrowUpRight
+                  className="size-4 transition-transform motion-safe:group-hover:-translate-y-0.5 motion-safe:group-hover:translate-x-0.5"
+                  aria-hidden="true"
+                />
+              </a>
+              <a
+                href={PROPERTIES_ROUTE}
+                className="focus-visible:ring-ring border-border-strong text-foreground hover:border-accent group inline-flex min-h-13 items-center gap-3 rounded-[1.5rem_0.45rem_1.5rem_1.5rem] border px-6 text-xs font-semibold tracking-[0.11em] uppercase transition-colors focus-visible:ring-2 focus-visible:outline-none"
+              >
+                Explore the atlas
+                <ArrowRight
+                  className="size-4 transition-transform motion-safe:group-hover:translate-x-1"
+                  aria-hidden="true"
+                />
+              </a>
+            </div>
           </div>
+
+          <div className="border-border mt-12 grid grid-cols-2 gap-6 border-t pt-5 lg:mt-8">
+            <div>
+              <p className="font-display text-3xl leading-none">{summary.total}</p>
+              <p className="text-foreground-subtle mt-1 text-[0.58rem] font-semibold tracking-[0.16em] uppercase">
+                Published homes
+              </p>
+            </div>
+            <div>
+              <p className="font-display text-3xl leading-none">
+                {String(serviceAreas.length).padStart(2, "0")}
+              </p>
+              <p className="text-foreground-subtle mt-1 text-[0.58rem] font-semibold tracking-[0.16em] uppercase">
+                Build areas
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="relative min-h-[34rem] lg:col-span-7 lg:min-h-0">
+          <div className="map-portal border-border-strong bg-surface relative h-full min-h-[34rem] overflow-hidden border shadow-raised">
+            {token === null ? (
+              <PropertyMapFallback reason="no-token" className="rounded-none" />
+            ) : (
+              <PropertyMapLoader
+                properties={visibleProperties}
+                token={token}
+                selectedId={selected?.id ?? null}
+                onSelect={setSelectedId}
+                onHover={setHoveredPropertyId}
+                resetToken={resetToken}
+                showLegend={false}
+                controlPosition="top-right"
+                className="h-full w-full"
+              />
+            )}
+
+            <div
+              aria-hidden="true"
+              className="from-background/35 pointer-events-none absolute inset-0 bg-gradient-to-t via-transparent to-transparent"
+            />
+
+            <div className="paper-glass border-border absolute top-5 left-5 flex items-center gap-3 rounded-full border px-4 py-2 shadow-soft sm:top-7 sm:left-7">
+              <span
+                aria-hidden="true"
+                className="atlas-pulse bg-status-move-in-ready block size-2 rounded-full"
+              />
+              <span className="text-[0.6rem] font-bold tracking-[0.18em] uppercase">
+                Live build atlas
+              </span>
+            </div>
+
+            <div className="absolute right-5 bottom-5 left-5 sm:right-7 sm:bottom-7 sm:left-7">
+              <StatusRail
+                summary={summary}
+                active={statusFilter}
+                onToggle={handleStatusToggle}
+                disabled={!hasProperties}
+              />
+            </div>
+
+            <div className="absolute top-5 right-16 sm:top-7 sm:right-20">
+              <PropertyDisclosure properties={properties} />
+            </div>
+
+            {selected ? (
+              <div className="pointer-events-none absolute inset-y-0 right-0 hidden items-center pr-6 xl:flex">
+                <MapPropertyPanel
+                  key={selected.id}
+                  property={selected}
+                  onClose={handleClose}
+                  variant="panel"
+                  className="pointer-events-auto w-[23rem] motion-safe:animate-[map-panel-in_420ms_var(--ease-entrance)_both]"
+                />
+              </div>
+            ) : null}
+
+            {selected ? (
+              <div className="absolute inset-x-0 bottom-0 xl:hidden">
+                <MapPropertyPanel
+                  key={selected.id}
+                  property={selected}
+                  onClose={handleClose}
+                  variant="sheet"
+                  className="motion-safe:animate-[map-sheet-in_360ms_var(--ease-entrance)_both]"
+                />
+              </div>
+            ) : null}
+          </div>
+
+          <div
+            aria-hidden="true"
+            className="bg-accent absolute -right-3 -bottom-3 -z-10 h-[72%] w-[68%] opacity-70"
+          />
         </div>
       </div>
 
-      {/* ---------------------------------------------------------------- */}
-      {/* Selected property.                                               */}
-      {/* ---------------------------------------------------------------- */}
-
-      {/* Desktop: a column against the right edge. */}
-      {selected ? (
-        <div className="pointer-events-none absolute inset-y-0 right-0 hidden items-center px-8 lg:flex lg:px-12">
-          <MapPropertyPanel
-            key={selected.id}
-            property={selected}
-            onClose={handleClose}
-            variant="panel"
-            className="pointer-events-auto w-[26rem] motion-safe:animate-[map-panel-in_420ms_var(--ease-entrance)_both]"
-          />
-        </div>
-      ) : null}
-
-      {/* Mobile and tablet: rises from the bottom edge. */}
-      {selected ? (
-        <div className="absolute inset-x-0 bottom-0 lg:hidden">
-          <MapPropertyPanel
-            key={selected.id}
-            property={selected}
-            onClose={handleClose}
-            variant="sheet"
-            className="motion-safe:animate-[map-sheet-in_360ms_var(--ease-entrance)_both]"
-          />
-        </div>
-      ) : null}
-
-      {/* Selection is announced rather than left to visual change alone. */}
       <p aria-live="polite" className="sr-only">
         {selected
           ? `${selected.name} selected. ${propertyStatusTokens[selected.status].label} in ${selected.suburb}.`
@@ -299,8 +248,6 @@ export function MapStage({ properties, summary, token }: MapStageProps) {
   );
 }
 
-/* -------------------------------------------------------------------------- */
-
 interface StatusRailProps {
   summary: PortfolioSummary;
   active: PropertyStatus | null;
@@ -308,34 +255,18 @@ interface StatusRailProps {
   disabled: boolean;
 }
 
-/**
- * The live portfolio summary, as a filter control.
- *
- * Presented as one continuous rail rather than four separate cards, so it reads
- * as part of the map's interface. Counts come from published records; a status
- * with none is shown at zero and disabled, because "nothing under construction
- * right now" is worth knowing and quietly hiding it would overstate the
- * portfolio.
- */
 function StatusRail({ summary, active, onToggle, disabled }: StatusRailProps) {
   return (
-    /*
-      The rail scrolls horizontally when four statuses will not fit — a 390px
-      viewport cannot show them all. The scrollbar is hidden and a fade is drawn
-      over the trailing edge instead, so a clipped item reads as "there is more
-      this way" rather than as a broken layout. `snap-x` makes the scroll land on
-      whole items.
-    */
-    <div className="relative w-full sm:w-auto sm:self-start">
+    <div className="relative w-full">
       <div
         role="group"
         aria-label="Filter the map by build stage"
-        className="border-border bg-surface/80 shadow-raised flex w-full snap-x gap-1 overflow-x-auto rounded-xl border p-1 backdrop-blur-xl [-ms-overflow-style:none] [scrollbar-width:none] sm:w-auto [&::-webkit-scrollbar]:hidden"
+        className="paper-glass border-border shadow-raised flex w-full snap-x gap-1 overflow-x-auto rounded-[0.55rem_1.4rem_1.4rem_1.4rem] border p-1.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {summary.statuses.map(({ status, count }) => {
-        const token = propertyStatusTokens[status];
-        const isActive = active === status;
-        const isEmpty = count === 0;
+          const token = propertyStatusTokens[status];
+          const isActive = active === status;
+          const isEmpty = count === 0;
 
           return (
             <button
@@ -346,17 +277,18 @@ function StatusRail({ summary, active, onToggle, disabled }: StatusRailProps) {
               aria-pressed={isActive}
               title={token.description}
               className={cn(
-                "focus-visible:ring-ring group flex shrink-0 snap-start items-center gap-2 rounded-lg px-3 py-2 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none sm:gap-2.5 sm:px-3.5 sm:py-2.5",
-                isActive ? "bg-foreground/10" : "hover:bg-foreground/5",
-                (disabled || isEmpty) && "cursor-not-allowed opacity-45",
+                "focus-visible:ring-ring group flex min-w-[8.5rem] flex-1 shrink-0 snap-start items-center gap-2.5 rounded-xl px-3 py-2 text-left transition-[background-color,transform] focus-visible:ring-2 focus-visible:outline-none",
+                isActive ? "bg-accent-soft" : "hover:bg-foreground/5",
+                !(disabled || isEmpty) && "motion-safe:hover:-translate-y-0.5",
+                (disabled || isEmpty) && "cursor-not-allowed opacity-40",
               )}
             >
               <StatusGlyph status={status} className={token.textClassName} />
               <span className="flex flex-col leading-tight">
-                <span className="text-foreground text-sm font-medium tabular-nums">
+                <span className="text-foreground text-sm font-semibold tabular-nums">
                   {count}
                 </span>
-                <span className="text-foreground-subtle text-[0.68rem] whitespace-nowrap sm:text-[0.7rem]">
+                <span className="text-foreground-subtle text-[0.64rem] whitespace-nowrap">
                   {token.label}
                 </span>
               </span>
@@ -365,23 +297,14 @@ function StatusRail({ summary, active, onToggle, disabled }: StatusRailProps) {
         })}
       </div>
 
-      {/* Trailing fade, mobile only — the rail fits from `sm` up. */}
       <div
         aria-hidden="true"
-        className="from-surface pointer-events-none absolute inset-y-0 right-0 w-10 rounded-r-xl bg-gradient-to-l to-transparent sm:hidden"
+        className="from-surface-raised pointer-events-none absolute inset-y-0 right-0 w-9 rounded-r-2xl bg-gradient-to-l to-transparent sm:hidden"
       />
     </div>
   );
 }
 
-/**
- * Non-map access to every published property, on this page.
- *
- * A visible disclosure rather than a screen-reader-only list: keyboard users
- * who can see the screen need to know where focus has gone, and `sr-only`
- * links move it somewhere invisible. Closed by default so it does not compete
- * with the map.
- */
 function PropertyDisclosure({
   properties,
 }: {
@@ -392,22 +315,21 @@ function PropertyDisclosure({
   }
 
   return (
-    <details className="border-border bg-surface/80 group max-w-full rounded-xl border backdrop-blur-xl">
-      <summary className="focus-visible:ring-ring text-foreground-muted hover:text-foreground flex cursor-pointer list-none items-center gap-2 px-3.5 py-2.5 text-xs tracking-[0.14em] uppercase transition-colors focus-visible:ring-2 focus-visible:outline-none">
+    <details className="paper-glass border-border group max-w-full rounded-full border shadow-soft">
+      <summary className="focus-visible:ring-ring text-foreground-muted hover:text-foreground flex cursor-pointer list-none items-center gap-2 rounded-full px-3.5 py-2.5 text-[0.6rem] font-bold tracking-[0.14em] uppercase transition-colors focus-visible:ring-2 focus-visible:outline-none">
         <List className="size-3.5" aria-hidden="true" />
-        Browse as a list
+        <span className="hidden sm:inline">Browse</span>
       </summary>
-      <ul className="border-border max-h-56 overflow-y-auto border-t p-2">
+      <ul className="paper-glass border-border absolute top-[calc(100%+0.5rem)] right-0 max-h-64 w-[min(22rem,80vw)] overflow-y-auto rounded-2xl border p-2 shadow-raised">
         {properties.map((property) => (
           <li key={property.id}>
             <a
               href={propertyHref(property.slug)}
-              className="focus-visible:ring-ring hover:bg-foreground/5 flex items-center justify-between gap-4 rounded-lg px-2.5 py-2 focus-visible:ring-2 focus-visible:outline-none"
+              className="focus-visible:ring-ring hover:bg-foreground/5 flex items-center justify-between gap-4 rounded-xl px-3 py-2.5 focus-visible:ring-2 focus-visible:outline-none"
             >
               <span className="text-foreground text-sm">{property.name}</span>
-              <span className="text-foreground-subtle shrink-0 text-xs">
-                {property.suburb} ·{" "}
-                {propertyStatusTokens[property.status].label}
+              <span className="text-foreground-subtle shrink-0 text-[0.65rem]">
+                {property.suburb} · {propertyStatusTokens[property.status].label}
               </span>
             </a>
           </li>

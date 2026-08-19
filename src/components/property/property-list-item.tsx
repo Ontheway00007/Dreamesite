@@ -34,13 +34,15 @@ export function PropertyListItem({
         onClick={() => onSelect(property.id)}
         aria-current={isSelected ? "true" : undefined}
         className={cn(
-          "group border-border flex w-full gap-4 border-b p-4 text-left transition-colors duration-(--duration-fast)",
-          isSelected ? "bg-surface" : "hover:bg-surface/60",
+          "group border-border flex w-full gap-4 rounded-[0.5rem_1.5rem_1.5rem_1.5rem] border p-3 text-left transition-[background-color,border-color,transform] duration-(--duration-base) ease-luxe",
+          isSelected
+            ? "border-accent bg-accent-soft"
+            : "bg-surface/45 hover:border-border-strong hover:bg-surface motion-safe:hover:-translate-y-0.5",
         )}
       >
         <div
           className={cn(
-            "bg-background-alt relative aspect-4/3 w-28 shrink-0 overflow-hidden rounded-lg border transition-colors duration-(--duration-fast)",
+            "bg-background-alt relative aspect-[4/5] w-24 shrink-0 overflow-hidden rounded-[0.4rem_1.25rem_1.25rem_1.25rem] border transition-colors duration-(--duration-fast) sm:w-28",
             isSelected ? "border-accent" : "border-transparent",
           )}
         >
@@ -54,7 +56,7 @@ export function PropertyListItem({
 
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
-            <h3 className="font-display text-lg leading-snug font-normal">
+            <h3 className="font-display text-xl leading-[0.95]">
               {property.name}
             </h3>
             <span

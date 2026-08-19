@@ -28,7 +28,7 @@ export function PropertyShowcase({ property }: PropertyShowcaseProps) {
 
   return (
     <figure>
-      <div className="border-border bg-background-alt relative aspect-16/9 overflow-hidden rounded-xl border">
+      <div className="editorial-frame border-border-strong bg-background relative aspect-[5/4] overflow-hidden border shadow-raised">
         {visual.url ? (
           <Image
             src={visual.url}

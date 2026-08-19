@@ -17,31 +17,32 @@ export function ServiceAreasSection() {
       spacing="lg"
       divided
       aria-labelledby="service-areas-heading"
-      className="overflow-hidden"
+      className="overflow-hidden bg-background"
     >
       <div>
         <div className="grid items-end gap-8 lg:grid-cols-12">
           <div className="lg:col-span-8">
-            <p className="text-accent text-eyebrow font-medium uppercase">
+            <p className="editorial-kicker text-accent">
               Where we build
             </p>
             <h2
               id="service-areas-heading"
-              className="font-display text-display mt-5 max-w-4xl font-light"
+              className="font-display text-heading-1 mt-7 max-w-4xl"
             >
-              Built across the north.
+              A narrow world,
+              <span className="block pl-[1.1em] italic">intentionally.</span>
             </h2>
           </div>
           <p className="text-foreground-muted max-w-md leading-relaxed lg:col-span-4 lg:justify-self-end">
-            Three established build areas connected by one northern Melbourne
-            corridor: Mickleham, Craigieburn and Donnybrook.
+            We stay close to the places we understand: Mickleham, Craigieburn
+            and Donnybrook, connected by Melbourne&apos;s northern growth corridor.
           </p>
         </div>
       </div>
 
       <div className="mt-16 grid gap-10 lg:mt-24 lg:grid-cols-12 lg:gap-14">
         <div className="lg:col-span-7">
-          <div className="border-border relative aspect-[4/3] overflow-hidden rounded-[2rem] border bg-[#d8d0c2] text-[#050506] shadow-raised sm:aspect-[16/10]">
+          <div className="editorial-frame border-border relative aspect-[4/3] overflow-hidden border bg-[#9eb29d] text-[#172017] shadow-raised sm:aspect-[16/10]">
             <div
               aria-hidden="true"
               className="absolute inset-0 opacity-45"
@@ -58,15 +59,15 @@ export function ServiceAreasSection() {
             >
               <path
                 d="M110 430 C210 352 280 385 346 294 S473 224 555 170 642 120 720 66"
-                stroke="#050506"
+                stroke="#172017"
                 strokeOpacity=".2"
                 strokeWidth="28"
                 strokeLinecap="round"
               />
               <path
                 d="M110 430 C210 352 280 385 346 294 S473 224 555 170 642 120 720 66"
-                stroke="var(--accent)"
-                strokeWidth="3"
+                stroke="#ca4d31"
+                strokeWidth="4"
                 strokeLinecap="round"
                 strokeDasharray="2 14"
               />
@@ -78,10 +79,10 @@ export function ServiceAreasSection() {
                 className="absolute -translate-x-1/2 -translate-y-1/2"
                 style={positions[index]}
               >
-                <span className="bg-background border-accent relative block size-5 rounded-full border-2 shadow-[0_0_0_9px_rgba(5,5,6,.12)]">
-                  <span className="bg-accent absolute inset-1 rounded-full" />
+                <span className="relative block size-5 rounded-full border-2 border-[#ca4d31] bg-[#fff8ed] shadow-[0_0_0_9px_rgba(23,32,23,.12)]">
+                  <span className="absolute inset-1 rounded-full bg-[#ca4d31]" />
                 </span>
-                <span className="bg-background text-foreground absolute top-7 left-1/2 -translate-x-1/2 rounded-full px-3 py-1.5 text-[0.625rem] font-medium tracking-[0.14em] whitespace-nowrap uppercase shadow-soft">
+                <span className="absolute top-7 left-1/2 -translate-x-1/2 rounded-full bg-[#172017] px-3 py-1.5 text-[0.625rem] font-medium tracking-[0.14em] whitespace-nowrap text-[#fff8ed] uppercase shadow-soft">
                   {area}
                 </span>
               </div>
@@ -97,11 +98,11 @@ export function ServiceAreasSection() {
           <div className="border-border border-t">
             {serviceAreas.map((area, index) => (
               <div key={area}>
-                <div className="group border-border grid grid-cols-[auto_1fr_auto] items-center gap-5 border-b py-7 sm:py-9">
+                <div className="group border-border grid grid-cols-[auto_1fr_auto] items-center gap-5 border-b py-7 sm:py-10">
                   <span className="text-foreground-subtle text-xs font-medium tracking-[0.2em] tabular-nums">
                     {String(index + 1).padStart(2, "0")}
                   </span>
-                  <span className="font-display text-heading-2 font-light transition-transform duration-(--duration-base) ease-luxe motion-safe:group-hover:translate-x-2">
+                  <span className="font-display text-heading-2 transition-transform duration-(--duration-base) ease-luxe motion-safe:group-hover:translate-x-3">
                     {area}
                   </span>
                   <ArrowUpRight

@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { ArrowLeft, DoorOpen } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, DoorOpen } from "lucide-react";
 
 import { StatusBadge } from "@/components/property/status-badge";
 import { Button } from "@/components/ui/button";
@@ -27,7 +27,7 @@ export function PropertyDetailHero({ property }: PropertyDetailHeroProps) {
     <div>
       <Link
         href={PROPERTIES_ROUTE}
-        className="text-foreground-subtle hover:text-foreground inline-flex items-center gap-2 text-xs font-medium tracking-[0.16em] uppercase transition-colors duration-(--duration-fast)"
+        className="text-foreground-subtle hover:text-accent inline-flex items-center gap-2 text-[0.62rem] font-bold tracking-[0.18em] uppercase transition-colors duration-(--duration-fast)"
       >
         <ArrowLeft size={14} aria-hidden />
         All homes
@@ -43,18 +43,18 @@ export function PropertyDetailHero({ property }: PropertyDetailHeroProps) {
         ) : null}
       </div>
 
-      <Heading level={1} as="h1" className="mt-6">
+      <Heading level={1} as="h1" className="mt-7 max-w-3xl">
         {property.name}
       </Heading>
 
-      <p className="text-foreground-subtle mt-4 text-sm tracking-[0.16em] uppercase">
+      <p className="text-accent mt-5 text-[0.65rem] font-bold tracking-[0.18em] uppercase">
         {address ?? `${property.suburb} ${property.state}`}
         {label ? (
           <span className="text-foreground-subtle normal-case"> · {label}</span>
         ) : null}
       </p>
 
-      <Text size="lead" className="mt-8 max-w-2xl">
+      <Text size="lead" className="mt-8 max-w-xl">
         {property.summary}
       </Text>
 
@@ -67,7 +67,7 @@ export function PropertyDetailHero({ property }: PropertyDetailHeroProps) {
       ) : null}
 
       <div className="mt-10 flex flex-wrap gap-4">
-        <Button href="#property-enquiry" variant="accent" size="lg">
+        <Button href="#property-enquiry" variant="accent" size="lg" iconRight={<ArrowUpRight size={16} aria-hidden />}>
           Enquire about this home
         </Button>
         <Button href={PROPERTIES_ROUTE} variant="outline" size="lg">

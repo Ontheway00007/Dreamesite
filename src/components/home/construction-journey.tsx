@@ -56,7 +56,7 @@ type Study = (typeof stages)[number]["study"];
 /** Abstract material studies keep an empty media state intentional and honest. */
 function MaterialStudy({ study, number }: { study: Study; number: string }) {
   return (
-    <div className="border-border bg-surface relative isolate aspect-[16/11] overflow-hidden rounded-[1.75rem] border shadow-raised">
+    <div className="border-border bg-surface editorial-frame relative isolate aspect-[16/11] overflow-hidden border shadow-raised">
       <div
         aria-hidden="true"
         className="absolute inset-0 opacity-35"
@@ -206,7 +206,7 @@ export function ConstructionJourney() {
     <section
       id="process"
       aria-labelledby="construction-journey-heading"
-      className="bg-background relative scroll-mt-header overflow-clip py-24 sm:py-32 lg:py-44"
+      className="ink-section bg-background relative scroll-mt-header overflow-clip py-24 sm:py-32 lg:py-44"
     >
       <div
         aria-hidden="true"
@@ -217,14 +217,14 @@ export function ConstructionJourney() {
         className="mx-auto grid w-full max-w-[120rem] gap-20 px-5 sm:px-8 lg:grid-cols-12 lg:gap-12 lg:px-12"
       >
         <header className="self-start lg:sticky lg:top-36 lg:col-span-4">
-          <p className="text-accent text-eyebrow font-medium uppercase">
+          <p className="editorial-kicker text-accent">
             From land to home
           </p>
           <h2
             id="construction-journey-heading"
             className="font-display text-heading-1 mt-6 max-w-lg font-light"
           >
-            A home isn&apos;t assembled. It is revealed.
+            A house becomes a home in layers.
           </h2>
           <p className="text-foreground-muted mt-7 max-w-sm leading-relaxed">
             Follow the decisions that turn an empty site into a finished place—

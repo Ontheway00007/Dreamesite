@@ -34,12 +34,12 @@ export function PropertyPreview({
   return (
     <article
       className={cn(
-        "border-border bg-surface/95 shadow-raised relative overflow-hidden rounded-xl border backdrop-blur-xl",
+        "paper-glass border-border-strong shadow-raised relative overflow-hidden rounded-[0.6rem_2rem_2rem_2rem] border",
         className,
       )}
     >
       <div className="flex gap-4 p-4 sm:gap-5 sm:p-5">
-        <div className="bg-background-alt relative hidden aspect-4/3 w-32 shrink-0 overflow-hidden rounded-lg sm:block">
+        <div className="bg-background-alt relative hidden aspect-[4/5] w-32 shrink-0 overflow-hidden rounded-[0.4rem_1.5rem_1.5rem_1.5rem] sm:block">
           <PropertyMedia
             property={property}
             sizes="128px"

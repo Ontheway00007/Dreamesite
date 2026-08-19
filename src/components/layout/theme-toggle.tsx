@@ -6,6 +6,7 @@ import { Moon, Sun } from "lucide-react";
 import { usePathname } from "next/navigation";
 
 import {
+  ADMIN_SITE_THEME,
   DEFAULT_SITE_THEME,
   isSiteTheme,
   THEME_CHANGE_EVENT,
@@ -14,10 +15,6 @@ import {
   type SiteTheme,
 } from "@/lib/theme";
 import { cn } from "@/lib/utils/cn";
-
-type ViewTransitionDocument = Document & {
-  startViewTransition?: (update: () => void) => unknown;
-};
 
 function storedTheme(): SiteTheme {
   try {
@@ -57,7 +54,7 @@ export function ThemeToggle({ className }: { className?: string }) {
   // React remounts the document once in development. Reapply the value that
   // the pre-paint script set, and keep the admin surface on its existing theme.
   useLayoutEffect(() => {
-    applyTheme(isAdmin ? DEFAULT_SITE_THEME : storedTheme(), false);
+    applyTheme(isAdmin ? ADMIN_SITE_THEME : storedTheme(), false);
 
     return () => {
       if (isAdmin) {
@@ -91,18 +88,7 @@ export function ThemeToggle({ className }: { className?: string }) {
       ? document.documentElement.dataset.theme
       : DEFAULT_SITE_THEME;
     const next: SiteTheme = current === "dark" ? "light" : "dark";
-    const update = () => applyTheme(next, true);
-    const reduceMotion = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    ).matches;
-    const transitionDocument = document as ViewTransitionDocument;
-
-    if (!reduceMotion && transitionDocument.startViewTransition) {
-      transitionDocument.startViewTransition(update);
-      return;
-    }
-
-    update();
+    applyTheme(next, true);
   };
 
   return (
